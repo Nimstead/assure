@@ -318,6 +318,21 @@ def test_scan_remote_enrols_once_keeps_going_past_a_failure_and_sends_no_credent
     assert agent.scan_remote("https://other", ["srv1"], None, keys_path=keys, run=run, post_fn=post_fn)  # another server's key isn't reused
 
 
+def test_scan_remote_wont_report_a_host_under_another_name(tmp_path):
+    """Audit: keys are cached by the name the host reports, so srv2 calling itself SRV1 would overwrite srv1's inventory."""
+    sent = []
+
+    def post_fn(server, path, body, insecure, key=None):
+        sent.append(path)
+        return {"agent_key": "k1", "asset_id": "a1"} if path.endswith("enroll") else {}
+    keys = str(tmp_path / "keys.json")
+    failed = agent.scan_remote("https://n", ["srv2", "srv1.corp.example", "10.0.0.5"], "tok", keys_path=keys, run=fake_remote([]), post_fn=post_fn)
+    assert list(failed) == ["srv2"] and "SRV1" in failed["srv2"]  # a name typed differs from the one reported: refused
+    assert sent == ["/api/agent/enroll", "/api/agent/inventory", "/api/agent/inventory"]  # a matching FQDN and an address still report
+    long = {**REMOTE_DUMP, "host": "FILESERVER-PROD"}  # COMPUTERNAME is the NetBIOS name: 15 characters at most
+    assert not agent.scan_remote("https://n", ["fileserver-prod-01.corp.example"], "tok", keys_path=keys, run=fake_remote([], long), post_fn=post_fn)
+
+
 def test_dpkg_reports_held_and_still_installed_packages():
     """dpkg's first status letter is what's wanted, the second what is: apt-mark hold reads "hi", often the old package that matters."""
     out = "openssl\t3.0.11-1\t\t3.0.11-1\thi \nlibx\t1.0\t\t1.0\tri \nhalf\t1.0\t\t1.0\tiU \n"

@@ -21,14 +21,23 @@ export function QrCode({ text }: { text: string }) {
 }
 
 /** Shows the key to add to an authenticator app and asks for its first code. */
-export function MfaEnrol({ setup, onCode, pending, extra }: { setup: MfaSetup; onCode: (code: string, current?: string) => void; pending: boolean; extra?: boolean }) {
+export function MfaEnrol({ setup, onCode, pending, extra, password }: {
+  setup: MfaSetup; onCode: (code: string, current?: string, currentPassword?: string) => void; pending: boolean; extra?: boolean;
+  /** signed in already, adding a first authenticator: the server asks for the password, so a stolen session can't */
+  password?: boolean;
+}) {
   return (
-    <form className="flex flex-col gap-3" onSubmit={(e) => { const f = fd(e); onCode(String(f.get("code")), extra ? String(f.get("current")) : undefined); }}>
+    <form className="flex flex-col gap-3" onSubmit={(e) => { const f = fd(e); onCode(String(f.get("code")), extra ? String(f.get("current")) : undefined, password ? String(f.get("password")) : undefined); }}>
       <p className="text-sm">Scan this with your authenticator app (1Password, Google Authenticator, Authy…), then enter the 6-digit code it shows.</p>
       <QrCode text={setup.uri} />
       <p className="text-sm font-medium">Can't scan? Enter this key instead</p>
       <CopyBlock label="Setup key" text={setup.secret} />
       <p className="text-xs text-muted break-all">Or open: <a className="underline" href={setup.uri}>{setup.uri}</a></p>
+      {password && (
+        <Field label="Current password">
+          <input className={input} name="password" type="password" required autoComplete="current-password" />
+        </Field>
+      )}
       {extra && (
         <Field label="Code from your current authenticator (or a recovery code)">
           <input className={input} name="current" required autoComplete="one-time-code" />
@@ -61,7 +70,7 @@ export function AccountSection() {
   const [codes, setCodes] = useState<string[]>([]);
   const start = useMutation({ mutationFn: () => api<MfaSetup>("/api/me/mfa/setup", { method: "POST" }), onSuccess: setSetup });
   const confirm = useMutation({
-    mutationFn: (b: { code: string; current_code?: string }) => api<{ recovery_codes: string[] }>("/api/me/mfa", { method: "POST", body: { setup: setup?.setup, ...b } }),
+    mutationFn: (b: { code: string; current_code?: string; current_password?: string }) => api<{ recovery_codes: string[] }>("/api/me/mfa", { method: "POST", body: { setup: setup?.setup, ...b } }),
     onSuccess: (r) => { setSetup(null); setCodes(r.recovery_codes); void qc.invalidateQueries({ queryKey: meQ.queryKey }); },
   });
   const pw = useMutation({ mutationFn: (f: FormData) => api("/api/me/password", { method: "POST", body: { current: f.get("current"), new: f.get("new"), code: f.get("code") || null } }) });
@@ -80,7 +89,8 @@ export function AccountSection() {
             {me.mfa ? `On. ${me.recovery_codes_left} recovery code${me.recovery_codes_left === 1 ? "" : "s"} left.` : "Off. Admins must use it; everyone else can."}
           </p>
           {codes.length > 0 && <RecoveryCodes codes={codes} />}
-          {setup ? <MfaEnrol setup={setup} extra={me.mfa} pending={confirm.isPending} onCode={(code, current_code) => confirm.mutate({ code, current_code })} />
+          {setup ? <MfaEnrol setup={setup} extra={me.mfa} password={!me.mfa} pending={confirm.isPending}
+            onCode={(code, current_code, current_password) => confirm.mutate({ code, current_code, current_password })} />
             : <button className={clsx(btnQuiet, "self-start")} disabled={start.isPending} onClick={() => start.mutate()}>{me.mfa ? "Move to a new authenticator" : "Turn on two-step sign-in"}</button>}
           <Alert error={start.error ?? confirm.error} />
         </div>

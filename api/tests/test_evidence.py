@@ -523,3 +523,21 @@ def test_checkpoints_already_read_from_s3_are_not_fetched_again(env, monkeypatch
     s3.gets = 0
     assert [cp["seq"] for cp in evidence.load_checkpoints(org)] == sorted(json.loads(b)["seq"] for b in s3.objects.values())
     assert s3.gets == 1  # only the new one
+
+
+def test_signed_packs_are_capped_per_person_per_hour(env, tmp_path, monkeypatch):
+    """Audit: each pack holds the period's whole ledger in memory and stores a checkpoint; a read token could loop it.
+    Per person, so one member can't use up the auditor's packs."""
+    from nimstead.app import EVIDENCE_PACKS_PER_HOUR
+    from nimstead.db import AuthFailure, User
+    monkeypatch.setattr(evidence, "KEY_FILE", tmp_path / "k.pem")
+    c, _ = setup_flow(env)
+    s = sessionmaker(make_engine(env))()
+    org_id = s.scalar(select(Finding.org_id))
+    user_id = s.scalar(select(User.id).where(User.org_id == org_id))
+    s.add_all(AuthFailure(key="evidence-pack:" + user_id) for _ in range(EVIDENCE_PACKS_PER_HOUR - 1))
+    s.commit()
+    assert c.get("/api/evidence/pack").status_code == 200
+    r = c.get("/api/evidence/pack")
+    assert r.status_code == 429 and "evidence packs an hour" in r.json()["detail"]
+    assert c.get("/api/evidence/report?summary=true").status_code == 200  # the Evidence page itself isn't capped

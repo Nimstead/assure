@@ -299,13 +299,13 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       byName.set(g.package, { hosts: e.hosts + g.hosts, dists: e.dists + 1 });  // a machine runs one distribution: hosts add up
     }
     const packages: Cmd[] = [...byName].slice(0, 3).map(([name, e]) => ({
-      id: `pkg-${name}`, label: `Package: ${name}`, hint: `${e.dists > 1 ? `${e.dists} distributions · ` : ""}${plural(e.hosts, "host")}`,
+      id: `pkg-${name}`, label: `Package: ${name}`, hint: `${e.dists > 1 ? `${e.dists} distributions · ` : ""}${plural(e.hosts, "asset")}`,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: name, group: "package" }) })),
     }));
     const hits: Cmd[] = (query === term ? found.data ?? [] : []).slice(0, 8).map((g) => ({
       // a search can match on host names too: then the count is on those hosts only, and says so
       id: `vuln-${g.key}`, code: g.key, label: g.packages > 1 ? `${g.packages} packages` : g.package,
-      hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "host" : "hosts"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
+      hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "asset" : "assets"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: g.key }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.
@@ -419,7 +419,7 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
             {GLOSSARY.map(([k, what]) => <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="font-medium">{k}</dt><dd className="text-muted">{what}</dd></div>)}
           </dl>
           <h3 className={h}>How priority works</h3>
-          <p className="mt-1 max-w-prose text-sm text-muted">Each finding scores 0 to 100 from its advisory's severity, how likely it is to be exploited soon (EPSS), whether it is exploited now (KEV), and the machine's criticality and exposure. Fix now is 80 or more, or any KEV; Next, Routine and Low follow, each with its own deadline.</p>
+          <p className="mt-1 max-w-prose text-sm text-muted">Each finding scores 0 to 100 from its advisory's severity, how likely it is to be exploited soon (EPSS), whether it is exploited now (KEV), and the machine's criticality and exposure. Fix now is 75 or more, or any KEV; Next, Routine and Low follow, each with its own deadline.</p>
           <h3 className={h}>How rollouts work</h3>
           <p className="mt-1 max-w-prose text-sm text-muted">Plan a fix, approve it, and the machine's agent runs it at its next check-in, rolling back if a health check fails. Approve the canary ring first; the broad ring's approval opens once every canary machine is fixed. Each machine is approved and recorded on its own.</p>
           <h3 className={h} id="help-keys">Keyboard shortcuts</h3>

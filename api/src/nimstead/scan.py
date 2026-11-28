@@ -214,14 +214,15 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
     """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass.
 
-    Commits s, including the caller's pending changes: callers stage their own writes and ledger entries (a new
-    package list, a context change, an SBOM) and rely on this commit to land them with the findings they caused."""
+    Commits s, including the caller's pending changes (a new package list). A caller that appended a ledger entry commits
+    it first: the append locks the org row, which would otherwise be held while the engine runs (audit)."""
     if asset.kind in ("external", "device"):  # no inventory: findings come from network scans and checks; only re-score here
         from nimstead import external
         return external.rescore(s, asset)
+    # one asset's rescans queue: its own report and the hourly pass would otherwise both insert the same new finding, and
+    # for an image a report resolving it and the pass reopening it from a stale "running" can't interleave (code review)
+    s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())
     if asset.kind == "image":
-        # a report resolving it and the hourly pass reopening it from a stale "running" can't interleave (code review)
-        s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())
         if not containers.is_running(s, asset):  # every host that ran it reported without it (DECISIONS 140)
             resolved = containers.resolve_not_running(s, asset)
             s.commit()
@@ -249,13 +250,14 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     if ("eol",) not in advisories:  # endoflife.date cycles, once per feed-update pass
         advisories[("eol",)] = {pkg: rec["cycles"] for pkg, rec in s.execute(
             select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "EOL"))}
-    if ("drivers",) not in advisories:  # LOLDrivers' hashes, once per pass
+    # LOLDrivers' hashes, once per pass, and only for a host that reported drivers (every Linux report loaded them)
+    if ("drivers",) not in advisories and any(p.ecosystem == windrivers.ECOSYSTEM for p in pkgs):
         stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == windrivers.ECOSYSTEM)) or {}
         advisories[("drivers",)] = stored.get("drivers", {})
     acc = s.get(AssetAccess, asset.id) if asset.kind == "host" else None  # who can get in (DECISIONS 165)
     sshd = acc.data.get("sshd") if acc else None
     ssh = linconfig.ssh_listening(runtime.recent_programs(rv.row, t), sshd) if acc else None
-    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)], acc.data if acc else None, ssh):
+    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories.get(("drivers",), {}), acc.data if acc else None, ssh):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}

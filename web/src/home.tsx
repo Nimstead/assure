@@ -38,6 +38,15 @@ export function Home() {
   const tests = new Set((assets.data ?? []).filter((x) => x.sandbox).map((x) => x.id));
   const plannable = (a: Action) => a.plannable && (!prodLocked || a.asset_ids.some((id) => tests.has(id)));
   const now = s.top_actions.filter(plannable), later = s.top_actions.filter((a) => !plannable(a));
+  // one that can't be planned here but outranks a card is named above the cards, not after them (critique: a KEV came last)
+  const rank = (a: Action) => PRIORITIES.indexOf(priorityOf(a.max_score, a.kev)), lowest = Math.max(-1, ...now.map(rank));
+  // with no card at all there's nothing to come before: the one line under the empty list names them, in risk order
+  const ahead = now.length ? later.filter((a) => rank(a) < lowest) : [], behind = later.filter((a) => !ahead.includes(a));
+  const why = "Their own updater, a policy, or production machines while production remediation is off";
+  const named = (xs: Action[]) => xs.map((a, i) => <Fragment key={a.ecosystem + a.package}>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><PriorityPill priority={priorityOf(a.max_score, a.kev)} />{a.kev && <KevBadge />}
+    <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })} className="font-medium text-ink underline">{a.package.split(":").at(-1)}</Link></span>{i < xs.length - 1 ? ", " : "."}{" "}
+  </Fragment>);
   const devices = s.devices_with_issues ?? 0;
   // fleet health is one line of links under the title, each to the list that names them (no second box below)
   const look = [
@@ -103,19 +112,18 @@ export function Home() {
           </div>
         ) : (
           <>
+            {ahead.length > 0 && <p className="mb-3 max-w-prose text-sm">
+              <span className="font-medium" title={why}>{ahead.length === 1 ? "Also urgent, and it can't be planned here:" : `Also urgent, and these ${ahead.length} can't be planned here:`}</span>{" "}{named(ahead)}</p>}
             {now.length > 0 && <ol className="flex flex-col gap-2">
               {now.map((a) => <ActionCard key={a.ecosystem + a.package} a={a} />)}
             </ol>}
             {/* only what can be planned here (the owner's call); the rest is one line away, in Findings */}
             {/* these are the top fixes by risk, not all of them: say so, and where the rest are */}
             <p className="mt-3 max-w-prose text-sm text-muted">
-              These are the top fixes by risk, not every one.{later.length > 0 && <>
-                {" "}<span title="Their own updater, a policy, or production machines while production remediation is off">{later.length === 1 ? "One more" : `${later.length} more`} can't be planned here:</span>{" "}
-                {/* named, each a link: a Fix now or KEV fix that can't be planned here is still the work to do */}
-                {later.map((a, i) => <Fragment key={a.ecosystem + a.package}>
-                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><PriorityPill priority={priorityOf(a.max_score, a.kev)} />{a.kev && <KevBadge />}
-                  <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), q: a.package, ecosystem: a.ecosystem })} className="font-medium text-ink underline">{a.package.split(":").at(-1)}</Link></span>{i < later.length - 1 ? ", " : "."}{" "}
-                </Fragment>)}
+              These are the top fixes by risk, not every one.{behind.length > 0 && <>
+                {" "}<span title={why}>{behind.length === 1 ? "One more" : `${behind.length} more`} can't be planned here:</span>{" "}
+                {/* named, each a link: a fix that can't be planned here is still the work to do */}
+                {named(behind)}
               </>}{" "}
               <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), fixable: true, group: "package" })} className="font-medium text-ink underline">Every fix, by package</Link></p>
           </>

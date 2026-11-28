@@ -633,6 +633,19 @@ def test_a_done_transition_that_asks_for_a_resolution_gets_one(org):
     assert run(s, oid, fake)["closed"] == 1 and fake.status("OPS-1") == "done" and fake.issues["OPS-1"]["resolution"] == "Done"
 
 
+def test_a_ticket_jira_wont_close_gets_no_closing_comment_every_hour(org):
+    """Audit: the closing comment went up before the move to Done, so a workflow without that move got it hourly."""
+    _, s, oid = org
+    f = finding(s, machine(s, oid, "db-1"))
+    setup(s, oid)
+    fake = FakeJira(no_done=True)
+    run(s, oid, fake)
+    resolve(s, f, version="3.0.15-1~deb12u1")
+    for _ in range(3):
+        assert run(s, oid, fake)["closed"] == 0
+    assert not [c for c in fake.issues["OPS-1"]["comments"] if "closing it" in c]
+
+
 def test_closing_comments_say_what_happened_when_findings_are_open_but_no_longer_sent(org):
     _, s, oid = org
     finding(s, machine(s, oid, "db-1"))

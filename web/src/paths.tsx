@@ -415,23 +415,24 @@ function Reached({ d, groupOf, group, clearGroup, sel, initialQ, show, setShow }
         </div>}
       </div>
       {!rows.length ? <p className="text-sm text-muted">No machine matches.</p> : (
-        <div className="overflow-x-auto border border-line bg-surface">
-          <table className="w-full min-w-[46rem] text-sm">
-            <thead><tr className="border-b border-line text-left text-xs text-muted">
+        // on phones each row is a card, labelled, so the grade and what cuts it off stay on screen (DESIGN.md: tables stack)
+        <div className="border border-line bg-surface md:overflow-x-auto">
+          <table className="w-full text-sm max-md:block md:min-w-[46rem]">
+            <thead className="max-md:sr-only"><tr className="border-b border-line text-left text-xs text-muted">
               <th className="px-3 py-2 font-medium">Machine</th><th className="px-3 py-2 font-medium">Route from a way in</th><th className="px-3 py-2 font-medium">Onto it through</th>
               <th className="px-3 py-2 font-medium">Holds</th><th className="px-3 py-2 font-medium">How sure</th><th className="px-3 py-2 font-medium">Cut off by</th>
             </tr></thead>
-            <tbody>
+            <tbody className="max-md:block">
               {rows.slice(0, shown).map(([id, m]) => {
                 const l = m.via ? linkName(m.via, m.account) : null;
                 return (
-                  <tr key={id} className="border-t border-line first:border-t-0">
-                    <td className="px-3 py-2"><Link to="/assets" search={{ machine: id }} className="font-medium underline">{name(id)}</Link><div className="text-xs text-muted">{groupOf(id)}</div></td>
-                    <td className="px-3 py-2">{m.route!.map(name).join(" → ")}</td>
-                    <td className="px-3 py-2">{l ? <>{l.name}{l.id && <span className="ml-1.5 font-mono text-xs">{l.id}</span>}</> : "—"}</td>
-                    <td className="px-3 py-2">{m.as === "root" ? "root" : m.as.join(", ")}</td>
-                    <td className="px-3 py-2"><Grade g={m.grade} /></td>
-                    <td className="num px-3 py-2">{m.cut_by?.length ? m.cut_by.map((i) => `change ${i + 1}`).join(", ") : <span className="text-muted">no single change</span>}</td>
+                  <tr key={id} className="border-t border-line first:border-t-0 max-md:block max-md:py-2">
+                    <td className="px-3 py-2 max-md:block max-md:py-0.5"><Link to="/assets" search={{ machine: id }} className="inline-flex tap items-center break-all font-medium underline">{name(id)}</Link><div className="text-xs text-muted">{groupOf(id)}</div></td>
+                    <td className="px-3 py-2 max-md:block max-md:py-0.5 max-md:break-words"><Cell>Route</Cell>{m.route!.map(name).join(" → ")}</td>
+                    <td className="px-3 py-2 max-md:block max-md:py-0.5"><Cell>Onto it through</Cell>{l ? <>{l.name}{l.id && <span className="ml-1.5 font-mono text-xs">{l.id}</span>}</> : "—"}</td>
+                    <td className="px-3 py-2 max-md:block max-md:py-0.5"><Cell>Holds</Cell>{m.as === "root" ? "root" : m.as.join(", ")}</td>
+                    <td className="px-3 py-2 max-md:inline-block max-md:py-1"><Grade g={m.grade} /></td>
+                    <td className="num px-3 py-2 max-md:inline-block max-md:py-1">{m.cut_by?.length ? m.cut_by.map((i) => `change ${i + 1}`).join(", ") : <span className="text-muted">no single change</span>}</td>
                   </tr>
                 );
               })}
@@ -443,6 +444,9 @@ function Reached({ d, groupOf, group, clearGroup, sel, initialQ, show, setShow }
     </section>
   );
 }
+
+/** A cell's column name, shown on phones where the table has no header row. */
+const Cell = ({ children }: { children: string }) => <span className="mr-1.5 text-xs text-muted md:hidden">{children}</span>;
 
 /** For analysts: every SSH key link and each machine's own path, as the agent's report reads them. */
 function Depth({ d }: { d: AttackPathsData }) {

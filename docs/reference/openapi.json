@@ -3928,6 +3928,18 @@
             ],
             "title": "Current Code"
           },
+          "current_password": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Password"
+          },
           "setup": {
             "maxLength": 1000,
             "title": "Setup",
@@ -6744,7 +6756,7 @@
       "SessionCookie": {
         "description": "Browser session. Role and two-step requirements depend on the operation.",
         "in": "cookie",
-        "name": "nimstead_session",
+        "name": "__Host-nimstead_session",
         "type": "apiKey"
       },
       "UploadToken": {
@@ -11229,7 +11241,7 @@
     },
     "/api/me/mfa": {
       "post": {
-        "description": "Return recovery_codes after staging and committing an authenticator setup.\n\nbody supplies setup/new code and optional current_code. user needs a browser\nsession. Commit quota first. Existing MFA requires a valid current factor.\nSetup success replaces secret/recovery hashes and appends evidence. Existing\nsessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,\nevidence and storage errors can propagate.",
+        "description": "Return recovery_codes after staging and committing an authenticator setup.\n\nbody supplies setup/new code and optional current_code/current_password. user needs a\nbrowser session. Commit quota first. Existing MFA requires a valid current factor; a\nfirst authenticator requires the current password.\nSetup success replaces secret/recovery hashes and appends evidence. Existing\nsessions/API tokens remain. SSO-origin users return 409; 403/422/429 for refusal.\nBackend/shape, evidence and storage errors can propagate.",
         "operationId": "confirm_mfa_api_me_mfa_post",
         "requestBody": {
           "content": {

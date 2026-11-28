@@ -218,7 +218,7 @@ def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
     """
     if os.path.exists(apk_db):
         try:
-            with open(apk_db) as f:
+            with open(apk_db, encoding="utf-8", errors="replace") as f:  # a package may ship a Latin-1 file name
                 text = f.read()
         except OSError as e:
             return [], _source(0, f"{apk_db}: {e}")
@@ -2626,12 +2626,117 @@ def _list_ended(e):
     return getattr(e, "winerror", None) in (None, 259)
 
 
-def windows_apps(reg, users=None, problems=None):
+def _parent_fd(root, rel, make=False):
+    """Open rel's folder below root and return its descriptor, never through a link a non-root user could plant.
+
+    A service account that owns a folder a package uses (postgres owns /var/lib/pgsql) could swap a path for a link
+    to /etc and have the root rollback chown or write through it. So each step opens with O_NOFOLLOW, and a link is
+    followed only out of a folder only root can change (merged /usr's /lib -> usr/lib). make creates missing folders
+    as tarfile would; otherwise a missing one raises FileNotFoundError. Linux only (dir_fd)."""
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for part in rel.strip("/").split("/")[:-1]:
+            if part in ("", "."):
+                continue
+            if make:
+                try:
+                    os.mkdir(part, 0o755, dir_fd=fd)
+                except FileExistsError:
+                    pass
+            try:
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            except OSError as e:
+                st = os.fstat(fd)
+                if e.errno not in (errno.ELOOP, errno.ENOTDIR) or st.st_uid != 0 or st.st_mode & 0o022:
+                    raise
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=fd)  # only root placed this link
+            os.close(fd)
+            fd = nxt
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _own(fd, m):
+    """Give the open file or folder fd member m's owner, mode and time; owner first, as chown clears setuid."""
+    os.fchown(fd, m.uid, m.gid)
+    os.fchmod(fd, m.mode)
+    os.utime(fd, (m.mtime, m.mtime))
+
+
+def _restore_member(tar, m, root):
+    """Restore member m of our own snapshot below root, as rpm and apk install: a file or hardlink as a new inode
+    renamed over its path (writing in place fails on a running binary, ETXTBSY, and can crash services that map a
+    library), a link replaced, a folder's owner and mode set through its own handle. Nothing goes through a link a
+    non-root user could have planted (_parent_fd; a folder that became a link is left alone), and a new file takes
+    the old one's SELinux label and file capabilities, which tarfile doesn't restore (sshd_exec_t would become bin_t,
+    and newuidmap would lose cap_setuid). Before 3.13, tarfile wrote a hardlink into the existing path's inode."""
+    pfd = _parent_fd(root, m.name, make=True)
+    name, tmp = os.path.basename(m.name.rstrip("/")), os.path.basename(m.name.rstrip("/")) + ".nimstead-restore"
+    try:
+        if m.isdir():
+            try:
+                os.mkdir(name, 0o700, dir_fd=pfd)
+            except FileExistsError:
+                pass
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=pfd)
+            except OSError:
+                return  # a link (or file) where the folder was: never chown through it
+            try:
+                _own(fd, m)
+            finally:
+                os.close(fd)
+            return
+        if not (m.isreg() or m.islnk() or m.issym()):
+            raise OSError(f"{m.name}: a device or FIFO in the snapshot; restore it by hand")
+        try:
+            os.unlink(tmp, dir_fd=pfd)
+        except FileNotFoundError:
+            pass
+        try:
+            if m.issym():
+                os.symlink(m.linkname, tmp, dir_fd=pfd)
+                os.chown(tmp, m.uid, m.gid, dir_fd=pfd, follow_symlinks=False)
+            elif m.islnk():  # its target sorts first, so it's already restored
+                spfd = _parent_fd(root, m.linkname)
+                try:
+                    os.link(os.path.basename(m.linkname), tmp, src_dir_fd=spfd, dst_dir_fd=pfd, follow_symlinks=False)
+                finally:
+                    os.close(spfd)
+            else:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=pfd)
+                try:
+                    with tar.extractfile(m) as src, os.fdopen(fd, "wb", closefd=False) as out:
+                        shutil.copyfileobj(src, out)
+                    os.fchown(fd, m.uid, m.gid)
+                    os.fchmod(fd, m.mode)
+                    for attr in ("security.selinux", "security.capability"):  # after chown, which clears capabilities
+                        try:
+                            os.setxattr(fd, attr, os.getxattr(f"/proc/self/fd/{pfd}/{name}", attr, follow_symlinks=False))
+                        except OSError:  # no SELinux, no capability, or no old file
+                            pass
+                    os.utime(fd, (m.mtime, m.mtime))
+                finally:
+                    os.close(fd)
+            os.replace(tmp, name, src_dir_fd=pfd, dst_dir_fd=pfd)
+        except BaseException:
+            try:
+                os.unlink(tmp, dir_fd=pfd)  # never leave a restored copy (setuid bits and all) lying beside the path
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(pfd)
+
+
+def windows_apps(reg, users=None, problems=None, machine_only=False):
     """Return sorted WinApp rows from registry Uninstall entries.
 
     reg supplies the winreg interface. Default scope is both HKLM views, loaded
     SID-shaped HKU keys and HKCU. A supplied users iterable limits scope to those
-    HKU keys. Offline profiles require offline_user_apps.
+    HKU keys. Offline profiles require offline_user_apps. machine_only reads the HKLM views alone.
 
     Deduplicate clipped name/version/publisher triples. Skip SystemComponent=1
     and missing or blank string names/versions. Publisher becomes source or None.
@@ -2644,8 +2749,9 @@ def windows_apps(reg, users=None, problems=None):
         places = [(reg.HKEY_USERS, u + "\\" + UNINSTALL, 0) for u in users]
     else:
         places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
-        places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "", problems) if USER_SID.match(sid)]
-        places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
+        if not machine_only:
+            places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "", problems) if USER_SID.match(sid)]
+            places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
     for hive, path, view in places:
         try:
             root = reg.OpenKey(hive, path, 0, reg.KEY_READ | view)
@@ -3003,7 +3109,8 @@ def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=N
     server is the exact cache key and reporting URL. token enrols cache misses.
     insecure_http passes through to post. keys_path defaults to the current user's
     .nimstead-remote-scan.json. run supplies collection commands and post_fn replaces
-    post. Keys use lowercased reported hostnames and exact server strings.
+    post. Keys use lowercased reported hostnames and exact server strings; a host typed by
+    name must report that name (first label), an address may report any.
 
     Unreadable/invalid JSON starts an empty cache. A new asset's key is saved before
     inventory upload. Cache writes truncate in place. Mode 0600 applies at creation,
@@ -3024,6 +3131,11 @@ def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=N
     for host in hosts:
         try:
             name, inv = collect_remote(host, run)
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:  # typed by name: keys are cached by the reported name, so a host can't report as another one
+                if host.split(".")[0][:15].lower() != name.split(".")[0][:15].lower():  # COMPUTERNAME is NetBIOS: 15 at most
+                    raise AgentError(f"reports itself as {name}: scan it by that name") from None
             if server not in keys.get(name.lower(), {}):
                 if not token:
                     raise AgentError("not enrolled yet: an enrolment token is required (NIMSTEAD_TOKEN)")
@@ -4244,7 +4356,7 @@ class Job:
         out = {}
         if self.mgr == "apk":
             try:
-                with open(self.path("/lib/apk/db/installed")) as f:
+                with open(self.path("/lib/apk/db/installed"), encoding="utf-8", errors="surrogateescape") as f:
                     installed = {p["name"]: p["version"] for p in parse_apk(f.read())}
             except OSError:
                 installed = {}
@@ -4265,7 +4377,7 @@ class Job:
         Raise StepFailed when RPM cannot list files; APK database I/O errors propagate."""
         names = {p["name"] for p in self.pkgs}
         if self.mgr == "apk":
-            with open(self.path("/lib/apk/db/installed")) as f:
+            with open(self.path("/lib/apk/db/installed"), encoding="utf-8", errors="surrogateescape") as f:  # paths still match the disk
                 return set(apk_owned(f.read(), names))
         paths = set()
         for n in sorted(names):
@@ -4533,17 +4645,23 @@ class Job:
                 self.step(f"database backup intact {d}", ok=_tree_sha256(bak) == digest, output="sha256 mismatch")
             added = sorted(self.owned_paths() - self.old_paths, reverse=True)  # files the new version brought in
             for p in added:
-                real = self.path(p)
-                if os.path.islink(real) or os.path.isfile(real):
-                    os.remove(real)
-                elif os.path.isdir(real):
-                    try:
-                        os.rmdir(real)  # only if empty; shared dirs stay
-                    except OSError:
-                        pass
-            with tarfile.open(self.artefacts[0][0]) as tar:
-                kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
-                tar.extractall(self.root, **kw)  # noqa: S202 — exact restore needs owners/setuid; archive verified above
+                try:
+                    pfd = _parent_fd(self.root, p)  # as the restore: never through a planted link
+                except FileNotFoundError:
+                    continue
+                name = os.path.basename(p.rstrip("/"))
+                try:
+                    if stat.S_ISDIR(os.stat(name, dir_fd=pfd, follow_symlinks=False).st_mode):
+                        os.rmdir(name, dir_fd=pfd)  # only if empty; shared dirs stay
+                    else:
+                        os.unlink(name, dir_fd=pfd)
+                except OSError:
+                    pass
+                finally:
+                    os.close(pfd)
+            with tarfile.open(self.artefacts[0][0]) as tar:  # our own, sha-verified above
+                for m in tar.getmembers():  # sorted when saved: folders and hardlink targets come first
+                    _restore_member(tar, m, self.root)
             for _d, bak, _, real in self.db_backups:
                 if os.path.isdir(bak):
                     shutil.rmtree(real)
@@ -4757,7 +4875,8 @@ class WinAppJob:
 
     def __init__(self, job, run=sh, fail_after_apply=False, apps=None):
         self.run, self.steps, self.mgr = run, [], job.get("manager")
-        self.apps = apps or (lambda: windows_apps(__import__("winreg")))  # installed WinApp rows, as inventory reads them
+        # machine-wide installs only: the fix installs --scope machine, and a standard user can write a per-user row
+        self.apps = apps or (lambda: windows_apps(__import__("winreg"), machine_only=True))
         self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
         self.inject, self.result_versions = fail_after_apply, None
         self.changed, self.undo = False, None  # set by the handler before its first change
@@ -6640,7 +6759,23 @@ def inventory(cfg):
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
         inv["neighbours"] = network_view()
-    return with_access(with_runtime(with_apps(inv, cfg), cfg), cfg)
+    return fit_inventory(with_access(with_runtime(with_apps(inv, cfg), cfg), cfg))
+
+
+INVENTORY_BODY_MAX = 9 * 1024 * 1024  # the server refuses a request over 10 MB, and with it the whole report
+
+
+def fit_inventory(inv, limit=INVENTORY_BODY_MAX):
+    """inv, with application rows left out (Maven, then npm, then PyPI) while it is over limit as JSON. Each scan has its
+    own cap but their sum has none; a line left out turns partial, so the server holds its findings open, never closes them."""
+    for eco, line in (("Maven", "java_archives"), ("npm", "npm_packages"), ("PyPI", "python_packages")):
+        if len(json.dumps(inv)) <= limit:
+            break
+        inv["packages"] = [p for p in inv["packages"] if p.get("ecosystem") != eco]
+        src = (inv.get("collection") or {}).get("sources")
+        if isinstance(src, dict) and line in src:
+            src[line] = {**src[line], "state": "partial", "error": "left out: the report would pass the server's 10 MB limit"}
+    return inv
 
 
 def with_apps(inv, cfg):
@@ -6793,16 +6928,21 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lamb
                 if owned(p):
                     skipped += 1
                     continue
-                if not regular(p):
+                if (f := _open_regular(p)) is None:
                     continue
                 try:
-                    with zipfile.ZipFile(p) as z:
-                        _poms(z, p, found)
-                        for inner in z.infolist():
-                            if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED:
-                                with zipfile.ZipFile(io.BytesIO(z.read(inner))) as zz:
-                                    _poms(zz, f"{p}!/{inner.filename}", found)
-                except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError):
+                    with f:
+                        if _zip_too_big(f, os.fstat(f.fileno()).st_size):  # zipfile reads the central directory whole
+                            continue
+                        with zipfile.ZipFile(f) as z:
+                            _poms(z, p, found)
+                            for inner in z.infolist():
+                                if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED:
+                                    nested = io.BytesIO(z.read(inner))
+                                    if not _zip_too_big(nested, len(nested.getbuffer())):
+                                        with zipfile.ZipFile(nested) as zz:
+                                            _poms(zz, f"{p}!/{inner.filename}", found)
+                except Exception:  # noqa: BLE001, S112 — a corrupt or crafted archive can raise anything from zipfile or zlib; it's one file unread
                     continue
             if partial:
                 break
@@ -6870,6 +7010,25 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
     return (lambda p: p in owned or p + "/package.json" in owned), None
 
 
+def _open_regular(path, mode="rb", **kw):
+    """path opened for reading if it is a regular file at open time, else None: never through a link and never blocking
+    on a FIFO, which a local user can rename over a file between a check and the open (as _is_elf)."""
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    if os.name == "nt" and not regular(path):  # Windows has no O_NOFOLLOW: refuse a link before opening, as before
+        return None
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            return os.fdopen(fd, mode, **kw)
+    except OSError:
+        pass
+    os.close(fd)
+    return None
+
+
 def regular(path):
     """Return whether lstat currently identifies path as a regular file.
 
@@ -6891,10 +7050,10 @@ def _dist_meta(path):
     winning. Normalize name separators/case and validate declared shapes, not installed state.
     Listed I/O problems return None. Paths can change after checks. No code is executed.
     """
-    if not regular(path):
+    if (f := _open_regular(path, "r", encoding="utf-8", errors="replace")) is None:
         return None
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
+        with f:
             head = f.read(MAX_METADATA)
     except OSError:
         return None
@@ -6923,13 +7082,13 @@ def _package_json(path):
     This is not a race-free read cap. OSError/ValueError return None. Recursion and unexpected
     errors can propagate. No package code is executed and installed/runtime state is not proved.
     """
-    if not regular(path):
+    if (f := _open_regular(path, "r", encoding="utf-8")) is None:
         return None
     try:
-        if os.path.getsize(path) > MAX_PACKAGE_JSON:
-            return None
-        with open(path, encoding="utf-8") as f:
-            return parse_package_json(f.read())
+        with f:
+            if os.fstat(f.fileno()).st_size > MAX_PACKAGE_JSON:
+                return None
+            return parse_package_json(f.read(MAX_PACKAGE_JSON + 1))
     except (OSError, ValueError):
         return None
 

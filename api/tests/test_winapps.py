@@ -281,6 +281,21 @@ def test_windows_apps_reads_both_views_and_hkcu_and_skips_junk():
     ]
 
 
+def test_a_fix_only_trusts_machine_wide_installs():
+    """Audit: a per-user (HKCU/HKU) row passed the winget job's "installed at the planned version" check, then the job
+    installed machine-wide: a standard user's fake entry could get SYSTEM to install an app."""
+    old = {"DisplayName": "AnyDesk", "DisplayVersion": "7.0.0", "Publisher": "AnyDesk Software GmbH"}
+    reg = FakeReg({("HKCU", 0): {"anydesk": old}})
+    assert agent.windows_apps(reg) and agent.windows_apps(reg, machine_only=True) == []
+
+
+def test_the_fix_job_reads_machine_wide_installs_by_default(monkeypatch):
+    # the job's own default, not just windows_apps: every other WinAppJob test passes apps= and skips it
+    old = {"DisplayName": "AnyDesk", "DisplayVersion": "7.0.0", "Publisher": "AnyDesk Software GmbH"}
+    monkeypatch.setitem(sys.modules, "winreg", FakeReg({("HKCU", 0): {"anydesk": old}}))
+    assert agent.WinAppJob({"manager": "winget", "packages": []}).apps() == []
+
+
 def test_windows_apps_survives_missing_hives():
     assert agent.windows_apps(FakeReg({})) == []
 

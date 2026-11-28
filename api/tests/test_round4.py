@@ -143,6 +143,23 @@ def test_security_headers(env, monkeypatch):
     assert "content-security-policy" not in TestClient(create_app(env)).get("/api/docs").headers
 
 
+def test_secure_cookies_are_host_only_so_a_sibling_subdomain_cant_plant_one(env, monkeypatch):
+    """Audit: without __Host-, x.example.com could set nimstead_sso (or a session) for Domain=example.com and get a
+    victim signed in as the attacker. __Host- cookies must be Secure, Path=/ and carry no Domain."""
+    import nimstead.app as appmod
+    monkeypatch.setattr(appmod, "SECURE_COOKIES", True)
+    c = TestClient(create_app(env), base_url="https://testserver")
+    r = c.post("/api/auth/signup", json={"email": "a@example.com", "password": PW, "org_name": "Acme"})
+    assert r.status_code == 201, r.text
+    head = r.headers["set-cookie"]
+    assert head.startswith("__Host-nimstead_session=") and "Secure" in head and "Path=/" in head and "Domain" not in head
+    assert c.get("/api/me").status_code == 200  # read back under the same name
+    c.cookies.set("nimstead_session", c.cookies.get("__Host-nimstead_session"))  # the old name, as a sibling would plant it
+    del c.cookies["__Host-nimstead_session"]
+    assert c.get("/api/me").status_code == 401  # never read
+    assert appmod.sso_cookie() == "__Host-nimstead_sso"
+
+
 def test_csp_allows_the_spas_inline_theme_script_by_hash(tmp_path):
     import base64
     import hashlib
@@ -239,8 +256,11 @@ def test_a_code_in_other_scripts_digits_is_just_wrong():
 def test_non_admins_may_enrol_and_replacing_needs_the_old_authenticator(env):
     c = user(env)
     s = c.post("/api/me/mfa/setup").json()
-    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": "000000"}).status_code == 422
-    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"])}).status_code == 200
+    # the first authenticator needs the password: a stolen session alone could enrol its own and lock the owner out (audit)
+    r = c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"])})
+    assert r.status_code == 403 and "password" in r.json()["detail"]
+    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": "000000", "current_password": PW}).status_code == 422
+    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"]), "current_password": PW}).status_code == 200
     s2 = c.post("/api/me/mfa/setup").json()
     assert c.post("/api/me/mfa", json={"setup": s2["setup"], "code": now_code(s2["secret"])}).status_code == 403
     r = c.post("/api/me/mfa", json={"setup": s2["setup"], "code": now_code(s2["secret"]), "current_code": now_code(s["secret"], 1)})
@@ -488,6 +508,24 @@ def test_code_guesses_are_capped_per_account_from_any_address(env):
     r = c.post("/api/auth/login", json={**pw, "code": now_code(secret, 1)})  # even the right code waits now
     assert r.status_code == 429 and "wrong codes" in r.json()["detail"]
     assert kinds(env).count("mfa_guessing_stopped") == 1
+
+
+def test_code_guesses_on_signed_in_routes_share_one_account_cap(env):
+    # with a stolen session, /api/tokens and /api/me/password must not each add a fresh guess budget,
+    # nor lock the owner out of signing in to end that session
+    # (a fumbled authenticator replacement on /api/me/mfa stays outside it: see the test above)
+    c = user(env)
+    secret = mfa_login(TestClient(c.app), "a@example.com").secret
+    guesses = [("/api/tokens", {"name": "x", "code": "000000"}),
+               ("/api/me/password", {"current": PW, "new": "another long password", "code": "000000"})]
+    for i in range(10):
+        path, body = guesses[i % 2]
+        assert c.post(path, json=body).status_code == 403
+    r = c.post("/api/tokens", json={"name": "x", "code": now_code(secret, 1)})  # even the right code waits now
+    assert r.status_code == 429 and "wrong codes" in r.json()["detail"]
+    assert kinds(env).count("mfa_guessing_stopped") == 1
+    r = TestClient(c.app).post("/api/auth/login", json={"email": "a@example.com", "password": PW, "code": now_code(secret, 1)})
+    assert r.status_code == 200
 
 
 def test_no_admin_session_without_a_second_factor(env, monkeypatch):

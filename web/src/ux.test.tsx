@@ -10,14 +10,14 @@ import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
 import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
-import { AgentUpdateSummary, AssetRow, AssetsPage, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { AgentUpdateSummary, AssetRow, AssetsPage, Baselines, before, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { AttackPathsPage, AttackPathsSummary, CRITICALITY, layoutFlow, linkName, pointText, splitAction, viaLabel, type ChokePoint } from "./paths";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
-import { ApiTokensSection, QrCode, UsersSection } from "./people";
+import { ApiTokensSection, MfaEnrol, QrCode, UsersSection } from "./people";
 import { JobCard, KbFleet, machineContext, plainRefusal, stepState } from "./remediation";
-import { AcceptRisk, FindingsPage } from "./findings";
+import { AcceptRisk, Due, FindingDetail, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
 
@@ -355,8 +355,8 @@ it("the palette keeps the highlighted command when late results arrive, and find
   expect(chosen).toBeTruthy();
   await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
   await act(async () => { release!(new Response(JSON.stringify([{ key: "CVE-1", vuln_id: "CVE-1", package: "go", packages: 1, hosts: 34, findings: 34 }]), { status: 200 })); });
-  await screen.findByRole("option", { name: /CVE-1.*34 hosts/ });  // the real total, from the grouped count
-  expect(screen.getByRole("option", { name: /Package: go.*2 distributions · 4 hosts/ })).toBeInTheDocument();  // one row, both distributions
+  await screen.findByRole("option", { name: /CVE-1.*34 assets/ });  // the real total, from the grouped count
+  expect(screen.getByRole("option", { name: /Package: go.*2 distributions · 4 assets/ })).toBeInTheDocument();  // one row, both distributions
   const ids = within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.id);
   expect(new Set(ids).size).toBe(ids.length);  // every option has its own id, so the arrow keys can reach each
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
@@ -555,6 +555,44 @@ it("Findings: Accept risk opens its form, asks for a reason and records the acce
   await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ reason: "isolated lab box, no network", days: 90 }));
 });
 
+it("Findings: a half-typed acceptance doesn't follow you to the next finding, and the help says Fix now starts at 75", async () => {
+  serve({});
+  const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
+    vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
+    first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-08T00:00:00", resolved_at: null, due: null, setting_fix: false, rule_evidence: null } as unknown as Finding;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  const r = render(<QueryClientProvider client={qc}><FindingDetail f={f} /></QueryClientProvider>);
+  expect(document.body).toHaveTextContent("Fix now is 75 or more, or any KEV.");
+  await userEvent.click(screen.getByRole("button", { name: "Accept risk" }));
+  await userEvent.type(screen.getByRole("textbox", { name: /Reason/ }), "only true of web-1");
+  r.rerender(<QueryClientProvider client={qc}><FindingDetail f={{ ...f, id: "f2", hostname: "db-1" }} /></QueryClientProvider>);
+  expect(screen.queryByRole("textbox", { name: /Reason/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Accept risk" })).toBeInTheDocument();
+});
+
+it("help: Fix now starts at 75, as the server scores it", () => {
+  render(<HelpPanel open onOpenChange={() => {}} />);
+  expect(screen.getByRole("dialog", { name: "Help" })).toHaveTextContent("Fix now is 75 or more, or any KEV");
+});
+
+it("Findings: a deadline a few hours gone is overdue, and one later today is due today", () => {
+  vi.useFakeTimers({ now: new Date(2026, 10, 28, 8), toFake: ["Date"] });  // 8am local
+  const at = (h: number) => new Date(2026, 10, 28, h).toISOString();
+  const { container, rerender } = render(<Due due={at(5)} />);
+  expect(container).toHaveTextContent(/^Overdue \(was due/);
+  rerender(<Due due={at(21)} />);  // 13 hours away, still today
+  expect(container).toHaveTextContent(/\(today\)$/);
+  rerender(<Due due={new Date(2026, 10, 29, 9).toISOString()} />);
+  expect(container).toHaveTextContent(/\(in 1 day\)$/);
+});
+
+it("Assets: Undo puts back exactly what the change set, Directory source included", () => {
+  const a = { ...HOST, directory_source: false, owner: null } as unknown as Asset;
+  expect(before(a, { directory_source: true })).toEqual({ directory_source: false });
+  expect(before(a, { owner: "ops", criticality: "high" })).toEqual({ owner: "", criticality: HOST.criticality });
+});
+
 it("Settings: when the settings can't load, This server says so instead of loading forever", async () => {
   serve({ ...SETTINGS_API, "GET /api/settings": undefined });
   wrap(<SettingsPage />);
@@ -575,6 +613,24 @@ it("Findings: the search box keeps a trailing space while the URL catches up wit
   expect(screen.getByRole("searchbox", { name: /Search findings/ })).toHaveValue("ssl");
 });
 
+it("Findings opened plainly lists each vulnerability once; a link that narrows it, or group=each, lists each finding", async () => {
+  // the owner's call from the critique: one CVE on 35 machines was 35 crimson rows
+  const row = { key: "CVE-1", findings: 35, hosts: 35, score: 100, kev: true, priority: "fix-now", fixed_version: "2", packages: 1, package: "brotli", vuln_id: "CVE-1", vulns: 1, ecosystem: "Ubuntu:24.04" };
+  serve({ "GET /api/findings/groups": [row], "GET /api/findings": [], "GET /api/assets": [] });
+  const urls = () => vi.mocked(fetch).mock.calls.map(([u]) => String(u));
+  const r = wrap(<FindingsPage search={{}} />);
+  expect(await screen.findByRole("list", { name: "Vulnerabilities" })).toHaveTextContent(/CVE-1/);
+  expect(screen.getByRole("combobox", { name: "Show" })).toHaveValue("vuln");
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  for (const search of [{ owner: "Payments" }, { group: "each" }]) {
+    vi.mocked(fetch).mockClear();
+    r.rerender(<QueryClientProvider client={qc}><FindingsPage search={search} /></QueryClientProvider>);
+    await waitFor(() => expect(urls().some((u) => u.startsWith("/api/findings?"))).toBe(true));
+    expect(urls().some((u) => u.startsWith("/api/findings/groups"))).toBe(false);
+  }
+});
+
 it("Findings: the drawer finds a fix in progress among active jobs only, however many finished jobs there are", async () => {
   const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
     vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
@@ -585,6 +641,25 @@ it("Findings: the drawer finds a fix in progress among active jobs only, however
   expect(await screen.findByText("Fix in progress:")).toBeInTheDocument();
   const urls = vi.mocked(fetch).mock.calls.map(([u]) => String(u)).filter((u) => u.startsWith("/api/remediation/jobs"));
   expect(urls).toEqual(["/api/remediation/jobs?status=planned,approved,dispatched,verifying"]);
+});
+
+it("Findings: the drawer's a key opens Accept risk, and never submits the open form", async () => {
+  // review: the old selector clicked the first enabled button under the accept slot: with the form open, its submit
+  const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
+    vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
+    first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-08T00:00:00", resolved_at: null, due: null, setting_fix: false, rule_evidence: null };
+  const calls = serve({ "GET /api/findings": [f], "GET /api/assets": [{ id: "a1", hostname: "web-1", kind: "host" }], "GET /api/findings/f1": f,
+    "GET /api/remediation/jobs": [], "GET /api/me": { email: "a@example.com", admin: true } });
+  wrap(<FindingsPage search={{ f: "f1" }} />);
+  await screen.findByRole("button", { name: "Accept risk" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Accept risk" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("dialog"));
+  await userEvent.keyboard("a");
+  expect(await screen.findByLabelText(/Reason/)).toBeInTheDocument();
+  screen.getByRole("button", { name: "Cancel" }).focus();
+  await userEvent.keyboard("a");
+  expect(screen.queryByText(/Say why in at least 10 characters/)).toBeNull();
+  expect(calls.filter((c) => c.method === "POST")).toEqual([]);
 });
 
 it("Evidence: the ledger note counts the whole ledger, and says how much of it the period's pack holds", async () => {
@@ -810,6 +885,32 @@ it("Fix first names the top fixes it can't plan, with their priority", async () 
   expect(screen.getAllByText("Fix now").length).toBeGreaterThan(0);  // its priority as a pill, with KEV beside it
 });
 
+it("Fix first names an urgent fix it can't plan above the cards, and a less urgent one after them", async () => {
+  serve({ "GET /api/summary": { assets: 3, open_by_priority: { "fix-now": 1, next: 2 }, attention: [], hosts_not_reporting: 0, agents_need_attention: 0,
+    top_actions: [{ ...ACTION, package: "curl", max_score: 60 },
+      { ...ACTION, ecosystem: "Maven", package: "org.apache.logging.log4j:log4j-core", plannable: false, kev: true, max_score: 100 },
+      { ...ACTION, ecosystem: "Maven", package: "org.yaml:snakeyaml", plannable: false, max_score: 30 }] },
+    "GET /api/settings": { production_remediation_allowed: true }, "GET /api/assets": [], "GET /api/coverage": { assessed: 0, inventory_only: 0, not_assessed: [] } });
+  wrap(<Home />);
+  const urgent = await screen.findByRole("link", { name: "log4j-core" });
+  const later = screen.getByRole("link", { name: "snakeyaml" });
+  expect(urgent.closest("p")).toHaveTextContent(/also urgent, and it can't be planned here/i);
+  const order = (a: Element, b: Element) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+  const curl = screen.getAllByText(/curl/)[0]!;
+  expect(order(urgent, curl)).toBeTruthy();  // above the first card
+  expect(order(curl, later)).toBeTruthy();  // the less urgent one still follows
+});
+
+it("Fix first with nothing it can plan names them once, under the empty list, never as 'also urgent'", async () => {
+  // review: production locked and no test machines put every fix "ahead" of no cards at all, low ones called urgent
+  serve({ "GET /api/summary": { assets: 2, open_by_priority: { low: 1 }, attention: [], hosts_not_reporting: 0, agents_need_attention: 0,
+    top_actions: [{ ...ACTION, package: "curl", plannable: false, max_score: 10 }] },
+    "GET /api/settings": { production_remediation_allowed: true }, "GET /api/assets": [], "GET /api/coverage": { assessed: 0, inventory_only: 0, not_assessed: [] } });
+  wrap(<Home />);
+  expect((await screen.findByRole("link", { name: "curl" })).closest("p")).toHaveTextContent(/One more can't be planned here/);
+  expect(screen.queryByText(/also urgent/i)).toBeNull();
+});
+
 it("agent updates: an agent with no version reported is named, never an empty label", () => {
   const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
   render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);
@@ -856,8 +957,44 @@ it("approve: a machine whose ring has a failure for this fix says so first, in e
   expect(screen.getByRole("alertdialog")).toHaveTextContent(/^Approve this fix\?.*This fix didn't work on b1 in this ring/);
 });
 
+it("approve: after a failure in the ring, approving waits until the person says they reviewed it", async () => {
+  const failed = { id: "3", asset_id: "b1", status: "failed", action_key: "Ubuntu:24.04|curl", hostname: "b1" } as unknown as Job;
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[failed]} onOpenChange={() => {}} onConfirm={() => {}} />);
+  const go = screen.getByRole("button", { name: "Approve and run" });
+  expect(go).toBeDisabled();
+  await userEvent.click(screen.getByRole("checkbox", { name: "I've reviewed why it didn't work" }));
+  expect(go).toBeEnabled();
+});
+
+it("approve: the several-machines dialog also waits for the review tick, and asks again each time it opens", async () => {
+  const j = (id: string, asset_id: string, status: Job["status"]) => ({ ...job(status), id, asset_id, hostname: asset_id, action_key: "Ubuntu:24.04|curl" });
+  const host = (id: string, ring: number) => ({ id, ring, kind: "host", hostname: id, health_units: ["x"], sandbox: true, open_by_priority: {} });
+  serve({ "GET /api/remediation/jobs": [j("4", "b3", "planned"), j("3", "b2", "planned"), j("2", "b1", "failed"), j("1", "c1", "succeeded")],
+    "GET /api/assets": [host("c1", 0), host("b1", 1), host("b2", 1), host("b3", 1)], "GET /api/settings": {}, "GET /api/me": { email: "a@b.c", admin: true },
+    "GET /api/windows-updates": [] });
+  wrap(<RemediationPage />);
+  const open = async () => userEvent.click(await screen.findByRole("button", { name: /Approve broad/ }));
+  await open();
+  const go = screen.getByRole("button", { name: "Approve 2 machines and run" });
+  expect(go).toBeDisabled();
+  await userEvent.click(screen.getByRole("checkbox", { name: "I've reviewed why it didn't work" }));
+  expect(go).toBeEnabled();
+  await userEvent.keyboard("{Escape}");
+  await open();
+  expect(screen.getByRole("button", { name: "Approve 2 machines and run" })).toBeDisabled();
+});
+
 it("rollouts: the machine a fix didn't work on is named on the card, not only counted inside the folded list", () => {
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
   render(<ul><RolloutCard jobs={[job("3", "b2", "planned"), job("2", "b1", "failed"), job("1", "c1", "succeeded")]} assets={[{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[]} /></ul>);
   expect(screen.getByRole("listitem", { name: "curl rollout" })).toHaveTextContent(/Didn't work on b1: review before approving more/);
+});
+
+it("a first authenticator added while signed in asks for the password, and sends it", async () => {
+  const sent: unknown[][] = [];
+  render(<MfaEnrol setup={{ setup: "s", secret: "ABC", uri: "otpauth://totp/x?secret=ABC" }} pending={false} password onCode={(...a) => sent.push(a)} />);
+  await userEvent.type(screen.getByLabelText("Current password"), "a long pass phrase");
+  await userEvent.type(screen.getByLabelText(/Code from the app/), "123456");
+  await userEvent.click(screen.getByRole("button", { name: "Turn on" }));
+  expect(sent).toEqual([["123456", undefined, "a long pass phrase"]]);
 });

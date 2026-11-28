@@ -73,7 +73,7 @@ Reset preserves the authenticator secret and recovery codes. It does not bypass 
 | Operation | Inputs, response and effects |
 | --- | --- |
 | POST /api/me/mfa/setup | Browser session. Password-origin user only. Return setup, secret, uri without changing stored MFA |
-| POST /api/me/mfa | setup, new code, optional current_code. Return recovery_codes after commit |
+| POST /api/me/mfa | setup, new code, current_code when replacing, current_password for a first authenticator. Return recovery_codes after commit |
 | POST /api/me/password | current password, new password of 12–200 characters, optional code. HTTP 204 after commit |
 | POST /api/me/sessions/revoke | Browser session. HTTP 204 after all this user's browser sessions and API tokens are deleted |
 

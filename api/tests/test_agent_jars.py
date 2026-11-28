@@ -94,3 +94,40 @@ def test_too_many_jar_packages_are_capped_and_the_scan_says_partial(tmp_path):
     assert len(pkgs) == 2 and not summary["complete"] and "2 jar packages" in summary["partial"]
     pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[], max_packages=3)
     assert len(pkgs) == 3 and summary["complete"]  # exactly at the cap is the whole inventory
+
+
+def test_a_corrupt_jar_is_skipped_not_the_whole_scan(tmp_path):
+    """Audit: bad deflate data raised zlib.error, which nothing caught, so the host stopped reporting on every run."""
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(POM, "groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.14.1\n" * 20)
+    data = bytearray(b.getvalue())
+    info = zipfile.ZipFile(io.BytesIO(bytes(data))).getinfo(POM)
+    start = info.header_offset + 30 + len(info.filename)
+    data[start:start + info.compress_size] = b"\xff" * info.compress_size  # an invalid deflate block type
+    (tmp_path / "rotten.jar").write_bytes(bytes(data))
+    (tmp_path / "good.jar").write_bytes(jar({POM: "groupId=org.apache.logging.log4j\nartifactId=log4j-core\nversion=2.17.1\n"}))
+    pkgs, summary = agent.scan_jars([str(tmp_path)], mounts=[])
+    assert [p["version"] for p in pkgs] == ["2.17.1"] and summary["complete"]
+
+
+def test_a_non_utf8_name_in_the_apk_database_doesnt_stop_the_report(tmp_path):
+    db = tmp_path / "installed"
+    db.write_bytes(b"P:musl\nV:1.2.5-r0\nF:usr/share\nR:caf\xe9.txt\n\n")
+    pkgs, line = agent.package_db(apk_db=str(db))
+    assert [(p["name"], p["version"]) for p in pkgs] == [("musl", "1.2.5-r0")] and line["state"] == "ok"
+
+
+def test_an_inventory_too_big_for_the_server_drops_application_rows_and_says_so():
+    """Audit: jars and apps are capped one by one, not together: a build server passed the server's 10 MB body cap
+    and every report was refused. Application rows go first (Maven, then npm), and their lines turn partial."""
+    def row(eco, i):
+        return {"ecosystem": eco, "name": f"org.example:lib-{i}", "version": "1.0", "source": "/srv/" + "x" * 200}
+    inv = {"packages": [{"ecosystem": "Debian:12", "name": "openssl", "version": "3.0"},
+                        *(row("Maven", i) for i in range(2000)), *(row("npm", i) for i in range(10))],
+           "collection": {"sources": {"java_archives": {"state": "ok", "count": 2000}, "npm_packages": {"state": "ok", "count": 10}}}}
+    out = agent.fit_inventory(inv, limit=100_000)
+    assert {p["ecosystem"] for p in out["packages"]} == {"Debian:12", "npm"}  # npm still fits once Maven is gone
+    src = out["collection"]["sources"]
+    assert src["java_archives"]["state"] == "partial" and "10 MB" in src["java_archives"]["error"] and src["npm_packages"]["state"] == "ok"
+    assert agent.fit_inventory({"packages": [row("Maven", 1)]}, limit=100_000)["packages"]  # one that fits is untouched

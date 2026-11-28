@@ -89,6 +89,10 @@ test("sign up, enrol a sandbox host, plan and approve a fix, see evidence", asyn
 
   // Findings + drawer
   await page.getByRole("link", { name: "Findings", exact: true }).first().click();
+  // opened plainly it lists each vulnerability once; Show > Each finding lists them per machine, and stays (?group=each)
+  await expect(page.getByRole("list", { name: "Vulnerabilities" })).toBeVisible();
+  await page.getByRole("combobox", { name: "Show" }).selectOption("");
+  await expect(page).toHaveURL(/group=each/);
   const rows = page.getByRole("row").filter({ hasText: "openssl" }).filter({ hasText: "sbx-1" });
   await expect(rows.first()).toBeVisible();
   await rows.first().click();
@@ -322,7 +326,8 @@ test("owners: set on a machine, counted on Progress, and an owner's name opens t
   expect(r.ok()).toBe(true);
   await page.goto("/progress");
   await expect(page.locator("h1")).toHaveText("Progress");
-  await expect(page.getByText(/^Open findings (fell|rose|held)/)).toBeVisible();
+  // a fresh fleet counts from its first day with findings (never "rose from 0")
+  await expect(page.getByText(/^(Open findings (fell|rose|held)|Since findings first appeared on|[\d,]+ open findings?, all found on)/)).toBeVisible();
   const owners = page.locator("section[aria-labelledby=owners]");
   const open = Number((await owners.getByRole("row", { name: /e2e team/ }).getByRole("cell").nth(2).textContent())!.replace(/,/g, ""));
   await owners.getByRole("link", { name: "e2e team" }).click();
@@ -687,7 +692,7 @@ test("keyboard: choosing on the trust ladder saves nothing; findings open with E
   await page.reload();
   await expect(page.getByRole("radio", { name: /^Approve/ })).toBeChecked();
 
-  await page.goto("/findings");
+  await page.goto("/findings?group=each");
   const first = page.getByRole("row").nth(1).getByRole("button");
   await first.focus();
   await page.keyboard.press("Enter");

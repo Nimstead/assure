@@ -12,6 +12,9 @@ import { AttackPathsSummary, MachinePaths } from "./paths";
 type AssetPatch = Partial<Pick<Asset, "criticality" | "internet_facing" | "directory_source" | "ring" | "health_units">> & { owner?: string };  // owner "" = none
 const LEVELS: Criticality[] = ["low", "medium", "high", "critical"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** What asset a had for each key patch p changes, so Undo puts back exactly those. */
+export const before = (a: Asset, p: AssetPatch) =>
+  Object.fromEntries(Object.keys(p).map((k) => [k, k === "owner" ? a.owner ?? "" : a[k as keyof AssetPatch]])) as AssetPatch;
 
 /** Render the asset inventory with URL filters, bulk edits, and host details. */
 export function AssetsPage() {
@@ -20,6 +23,7 @@ export function AssetsPage() {
   const q = useQuery(assetsQ);
 
   const patch = useMutation({
+    mutationKey: ["asset-patch"],
     mutationFn: ({ id, ...body }: { id: string } & AssetPatch) =>
       api(`/api/assets/${id}`, { method: "PATCH", body }),
     onMutate: async ({ id, ...body }) => {
@@ -33,9 +37,9 @@ export function AssetsPage() {
       if (ctx?.prev) qc.setQueryData<Asset[]>(assetsQ.queryKey, (a) => a?.map((x) => (x.id === id ? ctx.prev! : x)));
       setFailed({ id, message: e.message });
     },
-    onSuccess: (_d, { id }, ctx) => { setSaved(id); setLast(ctx?.prev ? { id, prev: ctx.prev } : null); },
-    // Context changes re-score findings, so everything derived from them is stale.
-    onSettled: () => refresh(qc, "assets"),
+    onSuccess: (_d, { id, ...body }, ctx) => { setSaved(id); setLast(ctx?.prev ? { id, p: before(ctx.prev, body) } : null); },
+    // Context changes re-score findings, so everything derived from them is stale; a bulk edit refetches once, after its last PATCH.
+    onSettled: () => (qc.isMutating({ mutationKey: ["asset-patch"] }) === 1 ? refresh(qc, "assets") : undefined),
   });
 
   // machines, devices with no agent, internet targets, container images: one view at a time (?view=); a device or image link opens its view
@@ -46,7 +50,7 @@ export function AssetsPage() {
   const images = (q.data ?? []).filter((a) => a.kind === "image");
   const [target, setTarget] = useState<Asset | null>(null);
   const [saved, setSaved] = useState("");
-  const [last, setLast] = useState<{ id: string; prev: Asset } | null>(null);  // the last single change, for Undo
+  const [last, setLast] = useState<{ id: string; p: AssetPatch } | null>(null);  // the last single change, for Undo
   const [failed, setFailed] = useState<{ id: string; message: string } | null>(null);  // shown on that row, not the page top
   const del = useMutation({
     mutationFn: (id: string) => api(`/api/assets/${id}`, { method: "DELETE" }),
@@ -82,7 +86,7 @@ export function AssetsPage() {
         ) : (
           <MachineList assets={q.data.filter((a) => MACHINE_KINDS.includes(a.kind))} saved={patch.isPending ? "" : saved} failed={failed}
             reranked={!patch.variables || Object.keys(patch.variables).some((k) => k !== "id" && k !== "owner")}
-            undo={last ? () => { const { id, prev } = last; setLast(null); patch.mutate({ id, criticality: prev.criticality, internet_facing: prev.internet_facing, ring: prev.ring, health_units: prev.health_units, owner: prev.owner ?? "" }); } : undefined}
+            undo={last ? () => { const { id, p } = last; setLast(null); patch.mutate({ id, ...p }); } : undefined}
             onPatch={(id, p) => { setSaved(""); setFailed(null); patch.mutate({ id, ...p }); }} onDelete={(a) => { del.reset(); setTarget(a); }} />
         )}
       </>}
@@ -604,7 +608,11 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked 
   const router = useRouter();
   const [text, setText] = useState(sp.q ?? "");
   const [on, setOn] = useState<Filter[]>(() => (sp.show ?? "").split(",").filter((f): f is Filter => f in FILTERS));
-  useEffect(() => { if (sp.show) setOn(sp.show.split(",").filter((f): f is Filter => f in FILTERS)); }, [sp.show]);
+  // both ways: a link that drops ?show= clears the filter too
+  useEffect(() => {
+    const next = (sp.show ?? "").split(",").filter((f): f is Filter => f in FILTERS);
+    setOn((cur) => (cur.join(",") === next.join(",") ? cur : next));
+  }, [sp.show]);
   const [crit, setCrit] = useState<Criticality | "">(() => (LEVELS as string[]).includes(sp.crit ?? "") ? sp.crit as Criticality : "");
   const [sort, setSort] = useState<Sort>(() => (["urgent", "name", "seen"].includes(sp.sort ?? "") ? sp.sort as Sort : "urgent"));
   const [owner, setOwner] = useState(() => (sp.noowner === "1" ? NO_OWNER : sp.owner ?? ""));
@@ -638,7 +646,7 @@ function MachineList({ assets, saved, failed, onPatch, onDelete, undo, reranked 
     p.internet_facing !== undefined && (p.internet_facing ? "internet-facing" : "not internet-facing")].filter(Boolean).join(", ");
   const apply = () => {
     // what each machine had before, so the whole change can be undone
-    const undo = pickedRows.map((a) => ({ id: a.id, p: Object.fromEntries(Object.keys(staged).map((k) => [k, k === "owner" ? a.owner ?? "" : a[k as keyof AssetPatch]])) as AssetPatch }));
+    const undo = pickedRows.map((a) => ({ id: a.id, p: before(a, staged) }));
     // ring and health units mean nothing for an application (no agent runs fixes there)
     const forRow = (a: Asset) => (a.kind === "host" ? staged : { ...staged, ring: undefined });
     pickedRows.forEach((a) => { const p = forRow(a); if (describe(p)) onPatch(a.id, p); });

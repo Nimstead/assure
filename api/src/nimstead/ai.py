@@ -34,7 +34,7 @@ def client() -> anthropic.Anthropic:
     """Return the process-cached Anthropic client using SDK environment credentials.
 
     SDK configuration errors propagate to the caller."""
-    return anthropic.Anthropic()
+    return anthropic.Anthropic(timeout=30, max_retries=1)  # sync routes share one thread pool: a stalled provider mustn't hold it
 
 
 def _call(system: str, user: str, effort: str, max_tokens: int, output_format: dict | None = None) -> str:

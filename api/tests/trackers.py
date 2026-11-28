@@ -18,12 +18,13 @@ class FakeJira:
     """Statuses: To Do (new), In Progress (indeterminate) and a Done-category status named done_name. Cloud serves
     /rest/api/2/search/jql (issues by id only: a key comes from GET issue/{id}) and 410s /search; Data Center serves
     /search only. resolution_screen: the Done transition's screen requires a Resolution (Data Center classic workflows).
-    refuse: projects whose create screen requires a field Nimstead doesn't send."""
+    refuse: projects whose create screen requires a field Nimstead doesn't send. no_done: the workflow has no transition
+    straight to Done (To Do -> In Progress -> Done)."""
 
     def __init__(self, cloud=True, done_name="Done", due_on_screen=True, projects=("PAY", "OPS", "SEC"), email="bot@example.com", token="tok",  # noqa: S107 (a fake's test value)
-                 resolution_screen=False, refuse=()):
+                 resolution_screen=False, refuse=(), no_done=False):
         self.cloud, self.done_name, self.due_on_screen, self.resolution_screen = cloud, done_name, due_on_screen, resolution_screen
-        self.projects, self.refuse = set(projects), set(refuse)
+        self.projects, self.refuse, self.no_done = set(projects), set(refuse), no_done
         self.auth = ("Basic " + base64.b64encode(f"{email}:{token}".encode()).decode()) if cloud else f"Bearer {token}"
         self.issues: dict[str, dict] = {}
         self.calls: list[tuple[str, str]] = []
@@ -96,7 +97,7 @@ class FakeJira:
                 return reply(201, {"id": "1"})
             if sub == "/transitions" and m == "GET":
                 cats = {"new": "To Do", "indeterminate": "In Progress", "done": self.done_name}
-                to = ["indeterminate", "done"] if i["status"] != "done" else ["new"]
+                to = (["indeterminate"] if self.no_done else ["indeterminate", "done"]) if i["status"] != "done" else ["new"]
                 expand = "transitions.fields" in req.url.params.get("expand", "")
                 res = {"resolution": {"required": True, "allowedValues": [{"id": "1", "name": "Won't Do"}, {"id": "2", "name": "Done"}]}}
                 return reply(200, {"transitions": [{"id": {"new": "11", "indeterminate": "21", "done": "31"}[c], "name": f"Go {c}",

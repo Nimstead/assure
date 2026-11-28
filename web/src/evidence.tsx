@@ -102,12 +102,12 @@ function ReportView({ r, days }: { r: EvidenceReport; days: number }) {
       <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {tile("Controls not met", <span className={counts.not_met ? "text-now-fg" : undefined}>{counts.not_met ?? 0} of {r.controls.length}</span>, `${metClean} met cleanly`)}
         {/* the number an auditor asks about leads to the findings behind it */}
-        {tile("Overdue findings", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open}</span>, m.overdue_open > 0 && (
+        {tile("Overdue findings", <span className={m.overdue_open > 0 ? "text-now-fg" : undefined}>{m.overdue_open.toLocaleString()}</span>, m.overdue_open > 0 && (
           <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), overdue: true, fixable: false })} className="inline-flex tap items-center font-medium text-accent underline">
             View {plural(m.overdue_open, "finding")}
           </Link>))}
         {tile("Mean time to remediate", mttr(m.mttr_days), m.resolved ? basis : undefined)}
-        {tile("Resolved on time", `${m.resolved_within_sla} of ${m.resolved}`, m.resolved ? basis : undefined)}
+        {tile("Resolved on time", `${m.resolved_within_sla.toLocaleString()} of ${m.resolved.toLocaleString()}`, m.resolved ? basis : undefined)}
       </dl>
 
       <section aria-labelledby="controls">

@@ -438,7 +438,7 @@ export function aiFilterToPatch(a: AiFilter): Partial<FindingsFilters> {
 const STALE = {
   jobs: ["jobs", "summary", "ledger", "kb-fleet"],
   findings: ["findings", "finding", "summary", "ledger", "progress"],
-  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet", "progress"],
+  assets: ["assets", "findings", "finding", "summary", "ledger", "jobs", "kb-fleet", "progress", "attack-paths"],
   people: ["users", "api-tokens", "enroll-tokens", "ledger"],
 } as const;
 /** Invalidate query groups affected by what and return a Promise for all invalidations on qc. */

@@ -1,12 +1,12 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-a7239566",
+    "name": "nimstead-sbx-3decc22c",
     "distro": "AlmaLinux-9"
   },
   {
     "step": "sandbox ready",
-    "os": "PRETTY_NAME=\"AlmaLinux 9.8 (Olive Jaguar)\""
+    "os": "PRETTY_NAME=\"AlmaLinux 9.9 (Chartreuse Bobcat)\""
   },
   {
     "step": "collected inventory",
@@ -15,10 +15,10 @@
   },
   {
     "step": "feeds synced",
-    "kev": 1756,
-    "epss": 395308,
+    "kev": 1808,
+    "epss": 413901,
     "osv": {
-      "inserted": 25931,
+      "inserted": 28910,
       "updated": 0,
       "skipped": 0
     },
@@ -26,30 +26,23 @@
   },
   {
     "step": "first inventory",
-    "open": 50,
+    "open": 3,
     "resolved": 0
   },
   {
     "step": "findings",
     "open_by_priority": {
-      "low": 50
+      "low": 3
     },
     "top_actions": [
-      "glibc",
-      "libxml2",
-      "expat",
-      "openssl",
-      "openssh",
-      "glib2",
       "curl",
-      "coreutils",
-      "sudo",
-      "pcre2"
+      "expat",
+      "openssh"
     ]
   },
   {
     "step": "remediation attempt",
-    "package": "glibc",
+    "package": "curl",
     "outcome": "applied",
     "status": "succeeded",
     "error": null,
@@ -57,48 +50,85 @@
       "ok  job validated",
       "ok  dnf available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
+      "ok  repository has a newer version",
       "ok  rollback snapshot saved",
       "ok  upgrade"
     ]
   },
   {
     "step": "rollback attempt",
-    "package": "libxml2",
+    "package": "expat",
     "outcome": "rolled_back",
     "status": "rolled_back",
-    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: ",
+    "error": "Change failed and was rolled back: nimstead-canary.service active after change failed: service is activating, restarted 11 times since the change",
     "steps": [
       "ok  job validated",
       "ok  dnf available",
       "ok  installed versions match plan",
+      "ok  fix is newer than installed",
+      "ok  no rollback copy kept from an earlier job with this id",
+      "ok  free space for the rollback copy",
       "ok  nimstead-canary.service active before change",
       "ok  refresh package index",
       "ok  simulate upgrade",
+      "ok  no package downgraded",
       "ok  change limited to planned packages",
+      "ok  repository has a newer version",
       "ok  rollback snapshot saved",
       "ok  upgrade",
+      "ok  still running the replaced copy",
       "FAIL nimstead-canary.service active after change",
       "ok  rollback artefact intact files.tar",
       "ok  database backup intact /var/lib/rpm",
       "ok  rollback restore",
       "ok  versions restored",
+      "ok  restart nimstead-canary.service on the restored version",
       "ok  nimstead-canary.service active after rollback"
     ],
     "restored": true
   },
   {
+    "step": "rollback copies left after success and rollback",
+    "count": "0"
+  },
+  {
+    "step": "rollback keeps the SELinux label and capabilities, and follows no planted link",
+    "label": true,
+    "content": "old sshd",
+    "capability": true,
+    "link_followed": false,
+    "new_inode": true,
+    "left": [
+      "sshd"
+    ],
+    "python": "3.9"
+  },
+  {
+    "step": "forged downgrade job",
+    "outcome": "aborted",
+    "error": "No changes made: simulate upgrade failed: Last metadata expiration check: 0:00:01 ago on Sat Nov 28 11:35:54 2026.\nNo match for argument: libcurl-0.0.1-1\nError: No packages marked for upgrade.",
+    "unchanged": true
+  },
+  {
     "step": "evidence pack",
     "problems": [],
-    "resolved": 4,
+    "resolved": 1,
     "controls": {
-      "UK Cyber Essentials Security update management": "met",
+      "UK Cyber Essentials Security update management": "no_activity",
       "ISO/IEC 27001:2022 A.8.8": "met",
       "NIST SP 800-53 Rev. 5 RA-5": "met",
       "NIST SP 800-53 Rev. 5 SI-2": "met",
       "PCI DSS v4.0.1 6.3.3": "met",
+      "SOC 2 (TSC 2017) CC7.1": "met",
+      "SOC 2 (TSC 2017) CC8.1": "met",
+      "NIS2 Directive Art. 21(2)(e)": "met",
       "CIS Controls v8.1 7.3 / 7.4": "met"
     }
   },
@@ -109,6 +139,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-a7239566"
+    "name": "nimstead-sbx-3decc22c"
   }
 ]

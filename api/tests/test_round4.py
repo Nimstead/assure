@@ -239,8 +239,11 @@ def test_a_code_in_other_scripts_digits_is_just_wrong():
 def test_non_admins_may_enrol_and_replacing_needs_the_old_authenticator(env):
     c = user(env)
     s = c.post("/api/me/mfa/setup").json()
-    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": "000000"}).status_code == 422
-    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"])}).status_code == 200
+    # the first authenticator needs the password: a stolen session alone could enrol its own and lock the owner out (audit)
+    r = c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"])})
+    assert r.status_code == 403 and "password" in r.json()["detail"]
+    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": "000000", "current_password": PW}).status_code == 422
+    assert c.post("/api/me/mfa", json={"setup": s["setup"], "code": now_code(s["secret"]), "current_password": PW}).status_code == 200
     s2 = c.post("/api/me/mfa/setup").json()
     assert c.post("/api/me/mfa", json={"setup": s2["setup"], "code": now_code(s2["secret"])}).status_code == 403
     r = c.post("/api/me/mfa", json={"setup": s2["setup"], "code": now_code(s2["secret"]), "current_code": now_code(s["secret"], 1)})

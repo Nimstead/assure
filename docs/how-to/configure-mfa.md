@@ -1,6 +1,6 @@
 # Set up or replace an authenticator
 
-Add two-step sign-in to a password account, or move it to another authenticator. You need a signed-in account and an authenticator app. For replacement, you also need a current code or an unused recovery code.
+Add two-step sign-in to a password account, or move it to another authenticator. You need a signed-in account and an authenticator app. For a first authenticator, you also need your current password; for replacement, a current code or an unused recovery code.
 
 SSO-origin accounts use the identity provider's MFA controls. This procedure applies to local password accounts.
 
@@ -9,7 +9,7 @@ SSO-origin accounts use the identity provider's MFA controls. This procedure app
 1. Open **Settings → Your account → Sign-in and security**.
 2. Select **Turn on two-step sign-in** or **Move to a new authenticator**.
 3. Scan the QR code with the new authenticator app.
-4. Enter a current code or recovery code if the replacement form requests one.
+4. Enter your current password if this is your first authenticator, or a current code or recovery code if the replacement form requests one.
 5. Enter the code from the new authenticator under **Code from the app**.
 6. Select **Turn on**.
 7. Save the new recovery codes in your protected credential store.

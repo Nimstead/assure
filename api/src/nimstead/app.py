@@ -880,13 +880,15 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         setup: str = Field(max_length=1000)
         code: str = Field(max_length=40)
         current_code: str | None = Field(None, max_length=40)  # replacing an authenticator needs the old one (or a recovery code)
+        current_password: str | None = Field(None, max_length=1000)  # the first one needs the password
 
     @app.post("/api/me/mfa")
     def confirm_mfa(body: MfaConfirm, user: CurrentUser, s: DB):
         """Return recovery_codes after staging and committing an authenticator setup.
 
-        body supplies setup/new code and optional current_code. user needs a browser
-        session. Commit quota first. Existing MFA requires a valid current factor.
+        body supplies setup/new code and optional current_code/current_password. user needs a
+        browser session. Commit quota first. Existing MFA requires a valid current factor; a
+        first authenticator requires the current password.
         Setup success replaces secret/recovery hashes and appends evidence. Existing
         sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
         evidence and storage errors can propagate."""
@@ -894,6 +896,11 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):
             raise HTTPException(403, "Enter a code from your current authenticator, or a recovery code")
+        if not user.totp_secret:  # a stolen session alone mustn't enrol its own authenticator and lock the owner out (audit)
+            try:
+                ph.verify(user.password_hash, body.current_password or "")
+            except VerifyMismatchError:
+                raise HTTPException(403, "Enter your current password") from None
         if not (codes := finish_mfa_setup(s, user, body.setup, body.code)):
             raise HTTPException(422, "That code doesn't match; check the authenticator app's clock and try again")
         s.commit()

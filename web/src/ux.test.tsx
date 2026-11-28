@@ -15,7 +15,7 @@ import { AttackPathsPage, AttackPathsSummary, CRITICALITY, layoutFlow, linkName,
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
-import { ApiTokensSection, QrCode, UsersSection } from "./people";
+import { ApiTokensSection, MfaEnrol, QrCode, UsersSection } from "./people";
 import { JobCard, KbFleet, machineContext, plainRefusal, stepState } from "./remediation";
 import { AcceptRisk, Due, FindingDetail, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
@@ -923,4 +923,13 @@ it("rollouts: the machine a fix didn't work on is named on the card, not only co
   const job = (id: string, asset_id: string, status: Job["status"]) => ({ id, asset_id, status, action_key: "Ubuntu:24.04|curl", hostname: asset_id } as unknown as Job);
   render(<ul><RolloutCard jobs={[job("3", "b2", "planned"), job("2", "b1", "failed"), job("1", "c1", "succeeded")]} assets={[{ id: "c1", ring: 0 }, { id: "b1", ring: 1 }, { id: "b2", ring: 1 }] as Asset[]} /></ul>);
   expect(screen.getByRole("listitem", { name: "curl rollout" })).toHaveTextContent(/Didn't work on b1: review before approving more/);
+});
+
+it("a first authenticator added while signed in asks for the password, and sends it", async () => {
+  const sent: unknown[][] = [];
+  render(<MfaEnrol setup={{ setup: "s", secret: "ABC", uri: "otpauth://totp/x?secret=ABC" }} pending={false} password onCode={(...a) => sent.push(a)} />);
+  await userEvent.type(screen.getByLabelText("Current password"), "a long pass phrase");
+  await userEvent.type(screen.getByLabelText(/Code from the app/), "123456");
+  await userEvent.click(screen.getByRole("button", { name: "Turn on" }));
+  expect(sent).toEqual([["123456", undefined, "a long pass phrase"]]);
 });

@@ -360,7 +360,8 @@ class LedgerEntry(Base):
     data: Mapped[dict]
     prev_hash: Mapped[str] = mapped_column(String(64))
     hash: Mapped[str] = mapped_column(String(64))
-    __table_args__ = (UniqueConstraint("org_id", "seq"),)  # concurrent appends fail loudly instead of forking
+    __table_args__ = (UniqueConstraint("org_id", "seq"),  # concurrent appends fail loudly instead of forking
+                      Index("ix_ledger_org_kind_subject", "org_id", "kind", "subject"))  # every report asks which assets sent an SBOM
 
 
 class RemediationJob(Base):

@@ -65,7 +65,8 @@ export function FindingsPage({ search }: { search: RawSearch }) {
     queryFn: ({ pageParam }) => api<Finding[]>(`/api/findings?${apiQs}&offset=${pageParam}`),
     getNextPageParam: (last: Finding[], all: Finding[][]) => (last.length < FINDINGS_CAP ? undefined : all.length * FINDINGS_CAP),
   });
-  const rows = useMemo(() => list.data?.pages.flat(), [list.data]);
+  // offset pages shift when findings change between fetches: keep each finding once
+  const rows = useMemo(() => list.data && [...new Map(list.data.pages.flat().map((f) => [f.id, f])).values()], [list.data]);
   const admin = useIsAdmin();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   useEffect(() => setPicked(new Set()), [apiQs]);
@@ -447,7 +448,8 @@ function FindingDrawer({ id, ids = [], total, more, onMove, onClose }: {
   const onKey = (e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLElement && e.target.closest("input, textarea, select")) return;
     if (e.key === "a" || e.key === "p") {
-      const b = (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`[data-act=${e.key === "a" ? "accept" : "plan"}] button:not(:disabled):not([aria-disabled=true])`);
+      // a only opens the accept form (its own button, a direct child): never the open form's submit
+      const b = (e.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`${e.key === "a" ? "[data-act=accept] > button" : "[data-act=plan] button"}:not(:disabled):not([aria-disabled=true])`);
       if (b) { e.preventDefault(); if (e.key === "p") b.focus(); else b.click(); }  // p only moves to Plan fix: Enter plans, so a stray key changes nothing
     }
     if (e.key === "j" && (next || more)) { e.preventDefault(); forward(); }
@@ -532,7 +534,7 @@ export function FindingDetail({ f }: { f: Finding }) {
     <div>
       <div className="flex flex-wrap items-center gap-2"><PriorityPill priority={f.priority} />{f.kev && <KevBadge />}<span className="num text-sm text-muted">Score {f.score}/100</span></div>
       <details className="mt-1 text-sm text-muted"><summary className="flex tap w-fit cursor-pointer items-center">How this is judged</summary>
-        <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 80 or more, or any KEV.</p></details>
+        <p className="mt-1 max-w-prose">0 to 100, from the advisory's severity, how likely it is to be exploited in the next 30 days (EPSS), whether it is being exploited now (KEV), and this machine's criticality and exposure. Fix now is 75 or more, or any KEV.</p></details>
       {f.due && <Due due={f.due} />}
       {/* what to do comes right after what it is (DESIGN.md: what broke, then what to do); the evidence follows */}
       {f.status === "open" && (
@@ -546,14 +548,14 @@ export function FindingDetail({ f }: { f: Finding }) {
           {refused && f.plannable !== false && <p className="mb-3 text-sm text-muted">This is a production machine, and production remediation is off on this server, so a fix can't be planned here yet. <Link to="/settings" hash="remediation" className="font-medium text-ink underline">How to turn it on</Link></p>}
           <div className="flex flex-wrap items-start gap-2">
             {(f.fixed_version || f.setting_fix) && !job && f.plannable !== false && !refused && <span data-act="plan"><PlanFixButton ecosystem={f.ecosystem} pkg={f.package} assetIds={[f.asset_id]} /></span>}
-            <span data-act="accept" className="contents"><AcceptRisk f={f} /></span>
+            <span data-act="accept" className="contents"><AcceptRisk key={f.id} f={f} /></span>
           </div>
         </>
       )}
       {f.status === "accepted" && (
         <>
           <H>Accepted risk</H>
-          <RevokeAcceptance id={f.id} />
+          <RevokeAcceptance key={f.id} id={f.id} />
         </>
       )}
 
@@ -636,11 +638,13 @@ export function Running({ r, pkg }: { r: FindingRunning; pkg: string }) {
 }
 
 /** "Due 3 Nov (in 6 days)" or "12 days overdue", from the deadline in force when it was first detected. */
-function Due({ due }: { due: string }) {
-  const d = parseUtc(due), days = Math.round((d.getTime() - Date.now()) / 86_400_000);
+export function Due({ due }: { due: string }) {
+  // overdue is the moment passing; the day count is calendar days, so it agrees with the date shown
+  const d = parseUtc(due), now = new Date(), late = d < now;
+  const days = Math.abs(Math.round((new Date(d).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86_400_000));
   const date = d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return days < 0
-    ? <p className="mt-2 text-sm font-medium text-now-fg">{plural(-days, "day")} overdue (was due {date})</p>
+  return late
+    ? <p className="mt-2 text-sm font-medium text-now-fg">{days ? `${plural(days, "day")} overdue` : "Overdue"} (was due {date})</p>
     : <p className="mt-2 text-sm text-muted">Due {date} ({days === 0 ? "today" : `in ${plural(days, "day")}`})</p>;
 }
 

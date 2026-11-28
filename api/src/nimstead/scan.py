@@ -214,14 +214,15 @@ def _engine(s: Session, asset: Asset, pkgs: list, matches: list, seen: set, prio
 def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dict | None = None) -> dict:
     """`cache`: decoded advisory records by (ecosystem, package), shared across hosts within one feed-update pass.
 
-    Commits s, including the caller's pending changes: callers stage their own writes and ledger entries (a new
-    package list, a context change, an SBOM) and rely on this commit to land them with the findings they caused."""
+    Commits s, including the caller's pending changes (a new package list). A caller that appended a ledger entry commits
+    it first: the append locks the org row, which would otherwise be held while the engine runs (audit)."""
     if asset.kind in ("external", "device"):  # no inventory: findings come from network scans and checks; only re-score here
         from nimstead import external
         return external.rescore(s, asset)
+    # one asset's rescans queue: its own report and the hourly pass would otherwise both insert the same new finding, and
+    # for an image a report resolving it and the pass reopening it from a stale "running" can't interleave (code review)
+    s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())
     if asset.kind == "image":
-        # a report resolving it and the hourly pass reopening it from a stale "running" can't interleave (code review)
-        s.execute(select(Asset.id).where(Asset.id == asset.id).with_for_update())
         if not containers.is_running(s, asset):  # every host that ran it reported without it (DECISIONS 140)
             resolved = containers.resolve_not_running(s, asset)
             s.commit()

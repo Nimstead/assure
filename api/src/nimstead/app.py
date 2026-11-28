@@ -228,6 +228,7 @@ RESET_MAX_PER_HOUR = 10  # per client address
 MFA_MAX_FAILURES = 10  # wrong codes per account in LOGIN_WINDOW, from any address
 EXPORT_MAX_PER_HOUR = 30  # CSV exports per org
 PROGRESS_MAX_PER_HOUR = 120  # whole-ledger replays per org (a page load is one; CSVs count as exports)
+EVIDENCE_PACKS_PER_HOUR = 20  # signed packs per org: each holds the period's whole ledger in memory and stores a checkpoint
 # an owner name (DECISIONS 145): no control characters, and none that hide text or reverse it, so one team can't pass
 # for another in a list, a CSV or a chat message
 OWNER_PATTERN = r"^[^\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]*$"
@@ -669,6 +670,32 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             return True
         return False
 
+    def code_failed(s: Session, user: User) -> None:
+        """Stage one wrong code against user's account-wide cap; at the cap, alert once a window. Caller commits."""
+        s.add(AuthFailure(key="mfa:" + user.id))
+        s.flush()
+        if failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES and not failures(s, "mfa-alerted:" + user.id):
+            s.add(AuthFailure(key="mfa-alerted:" + user.id))
+            evidence.append(s, user.org_id, "mfa_guessing_stopped", user.id, {"email": user.email})
+            notify.notify(s, user.org_id, "mfa_guessing_stopped",
+                          f"Sign-in codes for {user.email} were guessed {MFA_MAX_FAILURES} times: "
+                          "code entry is paused for 15 minutes. Change that password.", urgent=True)
+
+    def capped_factor(s: Session, user: User, given: str | None) -> bool:
+        """second_factor for signed-in routes, under the same per-account cap as sign-in.
+
+        The row lock is taken before counting and held until the failure (or the caller's
+        success) commits, so simultaneous guesses queue instead of all passing one count.
+        Return 429 at the cap; a wrong code is committed here before returning False."""
+        s.refresh(user, with_for_update=True)
+        if failures(s, "mfa:" + user.id) >= MFA_MAX_FAILURES:
+            raise HTTPException(429, "Too many wrong codes for this account; try again in 15 minutes")
+        if second_factor(s, user, given):
+            return True
+        code_failed(s, user)
+        s.commit()
+        return False
+
     def mfa_setup(user: User) -> dict:
         """Return setup, secret and uri for a new temporary authenticator proposal.
 
@@ -728,15 +755,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             if not code_for:
                 s.rollback()
             s.execute(delete(AuthFailure).where(AuthFailure.ts < now() - timedelta(seconds=RATE_WINDOW)))  # housekeeping
-            s.add_all(AuthFailure(key=k) for k in keys + (["mfa:" + code_for.id] if code_for else []))
-            s.flush()
-            if (code_for and failures(s, "mfa:" + code_for.id) >= MFA_MAX_FAILURES
-                    and not failures(s, "mfa-alerted:" + code_for.id)):  # someone has the password: say so, once a window
-                s.add(AuthFailure(key="mfa-alerted:" + code_for.id))
-                evidence.append(s, code_for.org_id, "mfa_guessing_stopped", code_for.id, {"email": code_for.email})
-                notify.notify(s, code_for.org_id, "mfa_guessing_stopped",
-                              f"Sign-in codes for {code_for.email} were guessed {MFA_MAX_FAILURES} times with the right password: "
-                              "code sign-in is paused for 15 minutes. Change that password.", urgent=True)
+            s.add_all(AuthFailure(key=k) for k in keys)
+            if code_for:
+                code_failed(s, code_for)
             s.commit()
             raise HTTPException(401, msg) from None
 
@@ -836,7 +857,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             ph.verify(user.password_hash, body.current)
         except VerifyMismatchError:
             raise HTTPException(403, "Current password is incorrect") from None
-        if user.totp_secret and not second_factor(s, user, body.code):
+        if user.totp_secret and not capped_factor(s, user, body.code):
             raise HTTPException(403, "Enter a current authenticator code")
         user.password_hash = ph.hash(body.new)
         keep = sha(request.cookies.get(SESSION_COOKIE, ""))
@@ -1072,7 +1093,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if user.totp_secret:
             if over_limit(s, "mfa-token:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):
                 raise HTTPException(429, "Too many attempts; try again in 15 minutes")
-            if not second_factor(s, user, body.code):
+            if not capped_factor(s, user, body.code):
                 raise HTTPException(403, "Enter a current authenticator code to create a token")
         token = "nmt_" + secrets.token_urlsafe(32)
         t = ApiToken(token_hash=sha(token), org_id=user.org_id, user_id=user.id, name=body.name,
@@ -1263,7 +1284,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             # anything (code review: a downgraded agent's last read linked hosts for ever)
             access.forget(s, asset)
         db_read = ((asset.collection or {}).get("sources") or {}).get("package_db")
-        replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count")))  # DECISIONS 83: a Linux list not read in full doesn't replace the last
+        # DECISIONS 83: a Linux list not read in full doesn't replace the last; nor one that arrived shorter than read (T3, as the engine judges it)
+        short = db_read and sum(p.ecosystem == asset.ecosystem for p in body.packages) < (db_read.get("count") or 0)
+        replaced = not (db_read and (db_read["state"] != "ok" or not db_read.get("count") or short))
         if replaced:
             s.execute(delete(InstalledPackage).where(InstalledPackage.asset_id == asset.id, InstalledPackage.origin == "agent"))
             s.add_all(InstalledPackage(asset_id=asset.id, origin="agent", **p.model_dump()) for p in body.packages)
@@ -1792,8 +1815,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             setattr(a, k, v or None if k in ("maintenance_window", "owner") else v)
         s.flush()
         evidence.append(s, a.org_id, "asset_context_changed", a.id, {"by": user.email, **context, **respelt})
+        s.commit()  # the ledger append locks the org row: release it before the engine runs
         if owner_only:  # no score depends on the owner
-            s.commit()
             return asset_json(a, {})
         rescan(s, a, inventory_received=False)  # context changed -> scores change
         if a.kind == "host":
@@ -1991,6 +2014,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.flush()
         evidence.append(s, a.org_id, "sbom_received", a.id, {
             "name": a.hostname, "by": by, "sha256": hashlib.sha256(raw).hexdigest(), **counts})
+        s.commit()  # the ledger append locks the org row: release it before the engine runs (as agent_containers does)
         return {**counts, **rescan(s, a, inventory_received=False)}
 
     # --- findings ----------------------------------------------------------
@@ -2756,6 +2780,9 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 if clash := set(domains) & set(other.sso_verified_domains):  # unverified claims can't block the real owner
                     raise HTTPException(409, f"Domain {sorted(clash)[0]} is already used by another organisation's SSO")
             o.sso_issuer, o.sso_client_id, o.sso_client_secret = issuer, body.client_id.strip(), secret
+            if body.required and not o.sso_required:  # members signed in with a password are signed out, as sign-in now refuses them
+                s.execute(delete(WebSession).where(WebSession.user_id.in_(select(User.id).where(
+                    User.org_id == o.id, User.origin == "password", User.admin.is_(False)))))
             o.sso_domains, o.sso_required = domains, body.required
             o.sso_verified_domains = [d for d in o.sso_verified_domains if d in domains]
         evidence.append(s, o.id, "sso_configured", o.id, {
@@ -3341,6 +3368,8 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         entries again before signing. Integrity refusals return 409. Checkpoint/key
         side effects can precede later failures. The ZIP's key is not an independent
         trust anchor. Database/file/key/backend errors can propagate."""
+        if over_limit(s, "evidence-pack:" + user.org_id, EVIDENCE_PACKS_PER_HOUR, 3600):
+            raise HTTPException(429, f"At most {EVIDENCE_PACKS_PER_HOUR} evidence packs an hour; try again later")
         if problems := evidence.verify_chain(s, user.org_id, full=False):
             raise HTTPException(409, f"Ledger integrity check failed; refusing to sign: {problems[:3]}")
         evidence.checkpoint(s, user.org_id)

@@ -419,7 +419,7 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
             {GLOSSARY.map(([k, what]) => <div key={k} className="grid grid-cols-[8rem_1fr] gap-3 py-2"><dt className="font-medium">{k}</dt><dd className="text-muted">{what}</dd></div>)}
           </dl>
           <h3 className={h}>How priority works</h3>
-          <p className="mt-1 max-w-prose text-sm text-muted">Each finding scores 0 to 100 from its advisory's severity, how likely it is to be exploited soon (EPSS), whether it is exploited now (KEV), and the machine's criticality and exposure. Fix now is 80 or more, or any KEV; Next, Routine and Low follow, each with its own deadline.</p>
+          <p className="mt-1 max-w-prose text-sm text-muted">Each finding scores 0 to 100 from its advisory's severity, how likely it is to be exploited soon (EPSS), whether it is exploited now (KEV), and the machine's criticality and exposure. Fix now is 75 or more, or any KEV; Next, Routine and Low follow, each with its own deadline.</p>
           <h3 className={h}>How rollouts work</h3>
           <p className="mt-1 max-w-prose text-sm text-muted">Plan a fix, approve it, and the machine's agent runs it at its next check-in, rolling back if a health check fails. Approve the canary ring first; the broad ring's approval opens once every canary machine is fixed. Each machine is approved and recorded on its own.</p>
           <h3 className={h} id="help-keys">Keyboard shortcuts</h3>

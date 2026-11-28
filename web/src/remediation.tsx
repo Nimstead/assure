@@ -209,7 +209,7 @@ function KbFleetRow({ row: r }: { row: KbRow }) {
                     <li key={h.asset_id} className="border-t border-line pt-2 text-sm">
                       <p className="break-words"><span className="font-medium">{h.hostname}</span>{h.ring === 0 && " (canary)"} <span className="text-muted">on build {h.build}</span></p>
                       <p className="mt-0.5 break-words">{h.job
-                        ? <Link to="/remediation" hash={jobAnchor(h.job.id)} className="text-ink underline decoration-line-strong hover:decoration-ink">{h.why}</Link>
+                        ? <Link to="/remediation" hash={jobAnchor(h.job.id)} className="inline-flex tap items-center text-ink underline decoration-line-strong hover:decoration-ink">{h.why}</Link>
                         : h.why}</p>
                       {h.notes.map((n) => <p key={n} className="mt-0.5 break-words text-muted">{n}</p>)}
                     </li>
@@ -242,7 +242,7 @@ export function JobCard({ job: j, onApprove, onCancel, blocked, inRollout }: { j
         <div className="min-w-0">
           <p className="font-medium">
             {/* inside a rollout the card above says the fix: each machine's card is titled by its machine */}
-            {inRollout ? <Link to="/assets" search={{ machine: j.asset_id }} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link>
+            {inRollout ? <Link to="/assets" search={{ machine: j.asset_id }} className="inline-flex tap items-center text-ink underline decoration-line-strong hover:decoration-ink">{j.hostname}</Link>
               : <Link to="/findings" search={filtersToSearch({ ...parseFilters({}), asset: j.asset_id, q: pkg ?? "", fixable: false })} className="text-ink underline decoration-line-strong hover:decoration-ink">{j.summary}</Link>}
           </p>
           {/* no dot separators: on a phone they'd start wrapped lines; spacing alone separates the facts */}

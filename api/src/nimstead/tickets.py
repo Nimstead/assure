@@ -824,9 +824,9 @@ def _close(s, org_id, cfg, c: Client, t: Ticket, done_in_tracker: bool, stats) -
     codes = Counter(code for code, _ in reasons.values())
     head = ("No finding in this ticket is open any more, so Nimstead is closing it." if set(codes) <= {"fixed", "accepted", "removed"}
             else "No machine is left in this ticket, so Nimstead is closing it. Machine by machine:")
-    c.comment(t.project, key, f"{head}\n\n" + c.style.block(_lines(old, old, lambda a: reasons[a][1])))
-    if not done_in_tracker:
+    if not done_in_tracker:  # close first: a workflow that refuses the move would otherwise get this comment every sync
         c.close(t.project, key)
+    c.comment(t.project, key, f"{head}\n\n" + c.style.block(_lines(old, old, lambda a: reasons[a][1])))
     t.key, t.state, t.closed_at, t.error = key, "closed", now(), None
     evidence.append(s, org_id, "ticket_closed", t.id, {"key": key, "project": t.project, "owner": t.owner, "action": t.action, "why": dict(codes)})
     stats["closed"] += 1

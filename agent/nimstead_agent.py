@@ -13,6 +13,7 @@ import base64
 import binascii
 import calendar
 import collections
+import copy
 import email.utils
 import errno
 import glob
@@ -218,7 +219,7 @@ def package_db(query=_query, apk_db=APK_DB, which=shutil.which):
     """
     if os.path.exists(apk_db):
         try:
-            with open(apk_db) as f:
+            with open(apk_db, encoding="utf-8", errors="replace") as f:  # a package may ship a Latin-1 file name
                 text = f.read()
         except OSError as e:
             return [], _source(0, f"{apk_db}: {e}")
@@ -2626,12 +2627,12 @@ def _list_ended(e):
     return getattr(e, "winerror", None) in (None, 259)
 
 
-def windows_apps(reg, users=None, problems=None):
+def windows_apps(reg, users=None, problems=None, machine_only=False):
     """Return sorted WinApp rows from registry Uninstall entries.
 
     reg supplies the winreg interface. Default scope is both HKLM views, loaded
     SID-shaped HKU keys and HKCU. A supplied users iterable limits scope to those
-    HKU keys. Offline profiles require offline_user_apps.
+    HKU keys. Offline profiles require offline_user_apps. machine_only reads the HKLM views alone.
 
     Deduplicate clipped name/version/publisher triples. Skip SystemComponent=1
     and missing or blank string names/versions. Publisher becomes source or None.
@@ -2644,8 +2645,9 @@ def windows_apps(reg, users=None, problems=None):
         places = [(reg.HKEY_USERS, u + "\\" + UNINSTALL, 0) for u in users]
     else:
         places = [(reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_64KEY), (reg.HKEY_LOCAL_MACHINE, UNINSTALL, reg.KEY_WOW64_32KEY)]
-        places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "", problems) if USER_SID.match(sid)]
-        places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
+        if not machine_only:
+            places += [(reg.HKEY_USERS, sid + "\\" + UNINSTALL, 0) for sid in _subkeys(reg, reg.HKEY_USERS, "", problems) if USER_SID.match(sid)]
+            places.append((reg.HKEY_CURRENT_USER, UNINSTALL, 0))
     for hive, path, view in places:
         try:
             root = reg.OpenKey(hive, path, 0, reg.KEY_READ | view)
@@ -3003,7 +3005,8 @@ def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=N
     server is the exact cache key and reporting URL. token enrols cache misses.
     insecure_http passes through to post. keys_path defaults to the current user's
     .nimstead-remote-scan.json. run supplies collection commands and post_fn replaces
-    post. Keys use lowercased reported hostnames and exact server strings.
+    post. Keys use lowercased reported hostnames and exact server strings; a host typed by
+    name must report that name (first label), an address may report any.
 
     Unreadable/invalid JSON starts an empty cache. A new asset's key is saved before
     inventory upload. Cache writes truncate in place. Mode 0600 applies at creation,
@@ -3024,6 +3027,11 @@ def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=N
     for host in hosts:
         try:
             name, inv = collect_remote(host, run)
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:  # typed by name: keys are cached by the reported name, so a host can't report as another one
+                if host.split(".")[0].lower() != name.split(".")[0].lower():
+                    raise AgentError(f"reports itself as {name}: scan it by that name") from None
             if server not in keys.get(name.lower(), {}):
                 if not token:
                     raise AgentError("not enrolled yet: an enrolment token is required (NIMSTEAD_TOKEN)")
@@ -4244,7 +4252,7 @@ class Job:
         out = {}
         if self.mgr == "apk":
             try:
-                with open(self.path("/lib/apk/db/installed")) as f:
+                with open(self.path("/lib/apk/db/installed"), encoding="utf-8", errors="surrogateescape") as f:
                     installed = {p["name"]: p["version"] for p in parse_apk(f.read())}
             except OSError:
                 installed = {}
@@ -4265,7 +4273,7 @@ class Job:
         Raise StepFailed when RPM cannot list files; APK database I/O errors propagate."""
         names = {p["name"] for p in self.pkgs}
         if self.mgr == "apk":
-            with open(self.path("/lib/apk/db/installed")) as f:
+            with open(self.path("/lib/apk/db/installed"), encoding="utf-8", errors="surrogateescape") as f:  # paths still match the disk
                 return set(apk_owned(f.read(), names))
         paths = set()
         for n in sorted(names):
@@ -4543,7 +4551,15 @@ class Job:
                         pass
             with tarfile.open(self.artefacts[0][0]) as tar:
                 kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
-                tar.extractall(self.root, **kw)  # noqa: S202 — exact restore needs owners/setuid; archive verified above
+                for m in tar.getmembers():  # noqa: S202 — exact restore needs owners/setuid; archive verified above
+                    if m.isreg():  # a new inode, as rpm/apk do: writing in place fails on a running binary (ETXTBSY)
+                        tmp = m.name + ".nimstead-restore"  # and can crash services that map the library
+                        staged = copy.copy(m)  # TarInfo.replace is 3.12+; the agent runs on 3.9
+                        staged.name = tmp
+                        tar.extract(staged, self.root, **kw)
+                        os.replace(os.path.join(self.root, tmp), os.path.join(self.root, m.name))
+                    else:
+                        tar.extract(m, self.root, **kw)
             for _d, bak, _, real in self.db_backups:
                 if os.path.isdir(bak):
                     shutil.rmtree(real)
@@ -4757,7 +4773,8 @@ class WinAppJob:
 
     def __init__(self, job, run=sh, fail_after_apply=False, apps=None):
         self.run, self.steps, self.mgr = run, [], job.get("manager")
-        self.apps = apps or (lambda: windows_apps(__import__("winreg")))  # installed WinApp rows, as inventory reads them
+        # machine-wide installs only: the fix installs --scope machine, and a standard user can write a per-user row
+        self.apps = apps or (lambda: windows_apps(__import__("winreg"), machine_only=True))
         self.pkgs, self.units = job.get("packages") or [], job.get("health_units") or []
         self.inject, self.result_versions = fail_after_apply, None
         self.changed, self.undo = False, None  # set by the handler before its first change
@@ -6640,7 +6657,23 @@ def inventory(cfg):
     inv = {**collect(), "auto_update": bool(cfg.get("auto_update", True)) if RELEASE_KEYS else None, "update_error": _update_error}
     if cfg.get("neighbours", True):
         inv["neighbours"] = network_view()
-    return with_access(with_runtime(with_apps(inv, cfg), cfg), cfg)
+    return fit_inventory(with_access(with_runtime(with_apps(inv, cfg), cfg), cfg))
+
+
+INVENTORY_BODY_MAX = 9 * 1024 * 1024  # the server refuses a request over 10 MB, and with it the whole report
+
+
+def fit_inventory(inv, limit=INVENTORY_BODY_MAX):
+    """inv, with application rows left out (Maven, then npm, then PyPI) while it is over limit as JSON. Each scan has its
+    own cap but their sum has none; a line left out turns partial, so the server holds its findings open, never closes them."""
+    for eco, line in (("Maven", "java_archives"), ("npm", "npm_packages"), ("PyPI", "python_packages")):
+        if len(json.dumps(inv)) <= limit:
+            break
+        inv["packages"] = [p for p in inv["packages"] if p.get("ecosystem") != eco]
+        src = (inv.get("collection") or {}).get("sources")
+        if isinstance(src, dict) and line in src:
+            src[line] = {**src[line], "state": "partial", "error": "left out: the report would pass the server's 10 MB limit"}
+    return inv
 
 
 def with_apps(inv, cfg):
@@ -6793,16 +6826,21 @@ def scan_jars(roots, max_seconds=300, max_files=500_000, mounts=None, owned=lamb
                 if owned(p):
                     skipped += 1
                     continue
-                if not regular(p):
+                if (f := _open_regular(p)) is None:
                     continue
                 try:
-                    with zipfile.ZipFile(p) as z:
-                        _poms(z, p, found)
-                        for inner in z.infolist():
-                            if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED:
-                                with zipfile.ZipFile(io.BytesIO(z.read(inner))) as zz:
-                                    _poms(zz, f"{p}!/{inner.filename}", found)
-                except (OSError, zipfile.BadZipFile, RuntimeError, NotImplementedError):
+                    with f:
+                        if _zip_too_big(f, os.fstat(f.fileno()).st_size):  # zipfile reads the central directory whole
+                            continue
+                        with zipfile.ZipFile(f) as z:
+                            _poms(z, p, found)
+                            for inner in z.infolist():
+                                if inner.filename.lower().endswith(".jar") and inner.file_size <= MAX_NESTED:
+                                    nested = io.BytesIO(z.read(inner))
+                                    if not _zip_too_big(nested, len(nested.getbuffer())):
+                                        with zipfile.ZipFile(nested) as zz:
+                                            _poms(zz, f"{p}!/{inner.filename}", found)
+                except Exception:  # noqa: BLE001, S112 — a corrupt or crafted archive can raise anything from zipfile or zlib; it's one file unread
                     continue
             if partial:
                 break
@@ -6870,6 +6908,23 @@ def package_owned(dpkg_info=DPKG_INFO, apk_db=APK_DB, which=shutil.which, nt=os.
     return (lambda p: p in owned or p + "/package.json" in owned), None
 
 
+def _open_regular(path, mode="rb", **kw):
+    """path opened for reading if it is a regular file at open time, else None: never through a link and never blocking
+    on a FIFO, which a local user can rename over a file between a check and the open (as _is_elf)."""
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        return None
+    try:
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            return os.fdopen(fd, mode, **kw)
+    except OSError:
+        pass
+    os.close(fd)
+    return None
+
+
 def regular(path):
     """Return whether lstat currently identifies path as a regular file.
 
@@ -6891,10 +6946,10 @@ def _dist_meta(path):
     winning. Normalize name separators/case and validate declared shapes, not installed state.
     Listed I/O problems return None. Paths can change after checks. No code is executed.
     """
-    if not regular(path):
+    if (f := _open_regular(path, "r", encoding="utf-8", errors="replace")) is None:
         return None
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
+        with f:
             head = f.read(MAX_METADATA)
     except OSError:
         return None
@@ -6923,13 +6978,13 @@ def _package_json(path):
     This is not a race-free read cap. OSError/ValueError return None. Recursion and unexpected
     errors can propagate. No package code is executed and installed/runtime state is not proved.
     """
-    if not regular(path):
+    if (f := _open_regular(path, "r", encoding="utf-8")) is None:
         return None
     try:
-        if os.path.getsize(path) > MAX_PACKAGE_JSON:
-            return None
-        with open(path, encoding="utf-8") as f:
-            return parse_package_json(f.read())
+        with f:
+            if os.fstat(f.fileno()).st_size > MAX_PACKAGE_JSON:
+                return None
+            return parse_package_json(f.read(MAX_PACKAGE_JSON + 1))
     except (OSError, ValueError):
         return None
 

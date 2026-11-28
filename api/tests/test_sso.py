@@ -215,9 +215,12 @@ def test_sso_required_blocks_password_login_for_its_users_only(env, idp):
     s.add(User(org_id=org_id, email="staff@corp.example.com", password_hash=ph.hash("correct horse battery"), admin=False))
     s.commit()
     pw = {"email": "staff@corp.example.com", "password": "correct horse battery"}  # a non-admin password user
-    assert TestClient(app).post("/api/auth/login", json=pw).status_code == 200
+    staff = TestClient(app)
+    assert staff.post("/api/auth/login", json=pw).status_code == 200
     r = admin.put("/api/settings/sso", json={"issuer": ISSUER, "client_id": CLIENT, "domains": ["corp.example.com"], "required": True})
     assert r.json()["required"] is True
+    assert staff.get("/api/findings").status_code == 401  # signed-in password members are signed out, not left for 14 days
+    assert admin.get("/api/settings/sso").status_code == 200  # the admin who turned it on keeps working
     r = TestClient(app).post("/api/auth/login", json=pw)
     assert r.status_code == 403 and "single sign-on" in r.json()["detail"]
     assert TestClient(app).post("/api/auth/login", json={**pw, "password": "wrong wrong wrong"}).status_code == 401  # no hint without the password

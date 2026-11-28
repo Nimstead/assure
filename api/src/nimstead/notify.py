@@ -26,6 +26,7 @@ from nimstead.netguard import check_public_url, guarded_client
 
 log = logging.getLogger(__name__)
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="notify")
+_account_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="account-email")  # a reset link never waits behind an alert backlog
 _pending: set[Future] = set()
 # Injectable for tests. None -> SSRF-guarded client with short timeouts.
 http_client: httpx.Client | None = None
@@ -117,7 +118,7 @@ def send_account_email(email: str, purpose: str, link: str) -> None:
             _send_email([email], "signup", text, False)
         except Exception as e:
             log.warning("account email could not be sent: %s", type(e).__name__)
-    f = _pool.submit(send)
+    f = _account_pool.submit(send)
     _pending.add(f)
     f.add_done_callback(_pending.discard)
 

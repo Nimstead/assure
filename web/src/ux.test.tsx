@@ -10,14 +10,14 @@ import { ActionCard, Home } from "./home";
 import { PlanFixButton } from "./planfix";
 import { foldRuns } from "./evidence";
 import { ApproveDialog, byPackage, PackageList, RemediationPage, RolloutCard, ringFailures, sections } from "./remediation";
-import { AgentUpdateSummary, AssetRow, AssetsPage, Baselines, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
+import { AgentUpdateSummary, AssetRow, AssetsPage, Baselines, before, baselineSummary, filterAssets, NotAssessed, UnmanagedDevices } from "./assets";
 import { AttackPathsPage, AttackPathsSummary, CRITICALITY, layoutFlow, linkName, pointText, splitAction, viaLabel, type ChokePoint } from "./paths";
 import { cmdGroup, HelpPanel, Palette } from "./shell";
 import { Done, errorLead } from "./ui";
 import { Onboarding, TROUBLESHOOT_AFTER_MS } from "./onboarding";
 import { ApiTokensSection, QrCode, UsersSection } from "./people";
 import { JobCard, KbFleet, machineContext, plainRefusal, stepState } from "./remediation";
-import { AcceptRisk, FindingsPage } from "./findings";
+import { AcceptRisk, Due, FindingDetail, FindingsPage } from "./findings";
 import { EvidencePage } from "./evidence";
 import { SettingsPage } from "./settings";
 
@@ -553,6 +553,44 @@ it("Findings: Accept risk opens its form, asks for a reason and records the acce
   await userEvent.type(reason, "isolated lab box, no network");
   await userEvent.click(screen.getByRole("button", { name: /^Accept/ }));
   await waitFor(() => expect(calls.find((c) => c.method === "POST")?.body).toEqual({ reason: "isolated lab box, no network", days: 90 }));
+});
+
+it("Findings: a half-typed acceptance doesn't follow you to the next finding, and the help says Fix now starts at 75", async () => {
+  serve({});
+  const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
+    vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
+    first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-08T00:00:00", resolved_at: null, due: null, setting_fix: false, rule_evidence: null } as unknown as Finding;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(meQ.queryKey, ME);
+  const r = render(<QueryClientProvider client={qc}><FindingDetail f={f} /></QueryClientProvider>);
+  expect(document.body).toHaveTextContent("Fix now is 75 or more, or any KEV.");
+  await userEvent.click(screen.getByRole("button", { name: "Accept risk" }));
+  await userEvent.type(screen.getByRole("textbox", { name: /Reason/ }), "only true of web-1");
+  r.rerender(<QueryClientProvider client={qc}><FindingDetail f={{ ...f, id: "f2", hostname: "db-1" }} /></QueryClientProvider>);
+  expect(screen.queryByRole("textbox", { name: /Reason/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Accept risk" })).toBeInTheDocument();
+});
+
+it("help: Fix now starts at 75, as the server scores it", () => {
+  render(<HelpPanel open onOpenChange={() => {}} />);
+  expect(screen.getByRole("dialog", { name: "Help" })).toHaveTextContent("Fix now is 75 or more, or any KEV");
+});
+
+it("Findings: a deadline a few hours gone is overdue, and one later today is due today", () => {
+  vi.useFakeTimers({ now: new Date(2026, 10, 28, 8), toFake: ["Date"] });  // 8am local
+  const at = (h: number) => new Date(2026, 10, 28, h).toISOString();
+  const { container, rerender } = render(<Due due={at(5)} />);
+  expect(container).toHaveTextContent(/^Overdue \(was due/);
+  rerender(<Due due={at(21)} />);  // 13 hours away, still today
+  expect(container).toHaveTextContent(/\(today\)$/);
+  rerender(<Due due={new Date(2026, 10, 29, 9).toISOString()} />);
+  expect(container).toHaveTextContent(/\(in 1 day\)$/);
+});
+
+it("Assets: Undo puts back exactly what the change set, Directory source included", () => {
+  const a = { ...HOST, directory_source: false, owner: null } as unknown as Asset;
+  expect(before(a, { directory_source: true })).toEqual({ directory_source: false });
+  expect(before(a, { owner: "ops", criticality: "high" })).toEqual({ owner: "", criticality: HOST.criticality });
 });
 
 it("Settings: when the settings can't load, This server says so instead of loading forever", async () => {

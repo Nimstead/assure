@@ -45,6 +45,7 @@ class FakeApk:
                 (self.root / "lib/apk/db/installed").write_text(apk_db(NEW, extra_file=True))
                 (self.root / "lib/apk/db/scripts.tar").write_bytes(b"new scripts")
                 (self.root / "usr/lib/libcrypto.so.3").write_text("new library")
+                self.new_ino = (self.root / "usr/lib/libcrypto.so.3").stat().st_ino
                 (self.root / "usr/lib/new-plugin.so").write_text("added by upgrade")
                 with open(self.root / "etc/apk/world", "a") as f:
                     f.write("\n".join(specs) + "\n")  # what real `apk add` does to dependencies
@@ -75,6 +76,9 @@ def test_apk_failure_restores_files_and_database_exactly(tmp_path):
     assert (h.root / "lib/apk/db/installed").read_text() == before_db
     assert (h.root / "lib/apk/db/scripts.tar").read_bytes() == b"old scripts"
     assert (h.root / "usr/lib/libcrypto.so.3").read_text() == "old library"
+    # a new file, not the new one rewritten in place: that fails on a running binary and crashes processes mapping a library
+    assert (h.root / "usr/lib/libcrypto.so.3").stat().st_ino != h.new_ino
+    assert not list(h.root.rglob("*.nimstead-restore"))
     assert not (h.root / "usr/lib/new-plugin.so").exists()  # file introduced by the new version removed
     assert [s["step"] for s in steps if s["step"].startswith("versions restored")]
 

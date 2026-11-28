@@ -446,6 +446,21 @@ def test_an_inventory_that_kept_the_old_list_does_not_judge_the_fix(env):
     assert c.get("/api/remediation/jobs").json()[0]["status"] == "succeeded"
 
 
+def test_a_list_that_arrived_shorter_than_read_does_not_judge_the_fix(env):
+    """Audit: the engine calls a list holding fewer rows than the agent read partial (T3) and holds findings open;
+    the server replaced the last list anyway and judged the job on it, so it turned not_fixed."""
+    from nimstead.engine.collection import DOC_VERSION
+    c = setup(env)
+    aid, h = add_host(c)
+    jid = _dispatched(c, aid, h)
+    c.post(f"/api/agent/jobs/{jid}/report", json={"outcome": "applied"}, headers=h)
+    short = {"v": DOC_VERSION, "sources": {"package_db": {"state": "ok", "count": 900}}}
+    c.post("/api/agent/inventory", json={**inv(NEW), "packages": inv(NEW)["packages"][:1], "collection": short}, headers=h)
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "verifying"
+    c.post("/api/agent/inventory", json=inv(NEW), headers=h)
+    assert c.get("/api/remediation/jobs").json()[0]["status"] == "succeeded"
+
+
 def test_accepting_a_finding_mid_verification_is_not_a_fix(env):
     c = setup(env)
     aid, h = add_host(c)

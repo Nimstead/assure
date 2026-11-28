@@ -696,6 +696,12 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
     that final commit but follows the earlier sweep commit. Stored-data, evidence,
     timezone and database errors propagate. No host process is started here."""
     sweep(s, asset.org_id)
+    # peers matter only when this host has a Windows job to hand out: a DC's routine poll doesn't load the fleet. Who they are
+    # comes from facts, not job state, so they're read before the org lock, which every ledger append in the org waits on (audit)
+    has_win = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
+                                                       RemediationJob.status == "approved").limit(1)) is not None
+    peers = [aid for aid, facts in s.execute(select(Asset.id, Asset.facts).where(Asset.org_id == asset.org_id, Asset.id != asset.id))
+             if serial_group(Asset(facts=facts)) == group] if has_win and (group := serial_group(asset)) else []
     org = s.get(Org, asset.org_id, with_for_update=True)  # PostgreSQL: two group members polling at once read "free" in turn
     out = []
     inside, _ = window_state(asset.maintenance_window or org.maintenance_window)
@@ -708,13 +714,8 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
                      RemediationJob.updated >= now() - WIN_TIMEOUT_MARGIN)
     win_busy = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
                                                         or_(RemediationJob.status == "dispatched", timed_out)).limit(1)) is not None
-    # peers matter only when this host has a Windows job to hand out: a DC's routine poll doesn't load the fleet
-    has_win = s.scalar(select(RemediationJob.id).where(RemediationJob.asset_id == asset.id, RemediationJob.manager == "windows",
-                                                       RemediationJob.status == "approved").limit(1)) is not None
-    if not win_busy and has_win and (group := serial_group(asset)):
-        peers = [aid for aid, facts in s.execute(select(Asset.id, Asset.facts).where(Asset.org_id == asset.org_id, Asset.id != asset.id))
-                 if serial_group(Asset(facts=facts)) == group]
-        win_busy = bool(peers) and s.scalar(select(RemediationJob.id).where(
+    if not win_busy and peers:
+        win_busy = s.scalar(select(RemediationJob.id).where(
             RemediationJob.asset_id.in_(peers), RemediationJob.manager == "windows",
             RemediationJob.status.in_(("dispatched", "verifying")),
             # a silent peer can't hold the group forever, but a Windows install is silent for hours: the same limit sweep() gives it.

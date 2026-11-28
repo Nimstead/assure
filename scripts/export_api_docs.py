@@ -677,10 +677,10 @@ def main() -> int:
     for name, content in render().items():
         path = ROOT / name
         if args.check:
-            if not path.exists() or path.read_text() != content:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
                 stale.append(name)
         else:
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8")
     for name in stale:
         print(f"Stale API documentation: {name}")
     return int(bool(stale))

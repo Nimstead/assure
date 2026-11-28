@@ -58,13 +58,13 @@ def coverage() -> dict[str, list[tuple[str, bool]]]:
     out = {}
     for folder in PYTHON_ROOTS:
         for path in sorted((ROOT / folder).rglob("*.py")):
-            rows = python_symbols(ast.parse(path.read_text()))
+            rows = python_symbols(ast.parse(path.read_text(encoding="utf-8")))
             if rows:
                 out[path.relative_to(ROOT).as_posix()] = rows
     for path in sorted((ROOT / "web/src").rglob("*")):
         if path.suffix not in {".ts", ".tsx"} or ".test." in path.name or path.name == "setup-tests.ts":
             continue
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         rows = []
         for match in WEB_DECL.finditer(source):
             before = source[:match.start()].rstrip()
@@ -119,7 +119,7 @@ def link_problems() -> list[str]:
     """
     problems = []
     for path in documentation_paths():
-        source = re.sub(r"^```.*?^```[^\n]*", "", path.read_text(), flags=re.M | re.S)
+        source = re.sub(r"^```.*?^```[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.M | re.S)
         targets = [match[1] or match[2] for match in LINK.finditer(source)]
         targets += re.findall(r'^\s*\[[^]\n]+\]:\s*<?([^\s>]+)>?', source, re.M)
         targets += re.findall(r'(?:href|src)=["\']([^"\']+)["\']', source)
@@ -131,7 +131,7 @@ def link_problems() -> list[str]:
             if not local.exists():
                 problems.append(f"{path.relative_to(ROOT)}: missing {target}")
             elif url.fragment and local.suffix == ".md":
-                if unquote(url.fragment) not in markdown_anchors(local.read_text()):
+                if unquote(url.fragment) not in markdown_anchors(local.read_text(encoding="utf-8")):
                     problems.append(f"{path.relative_to(ROOT)}: missing heading {target}")
     return problems
 
@@ -174,7 +174,7 @@ def main() -> int:
     args = parser.parse_args()
     rows = coverage()
     if args.report:
-        (ROOT / "docs/reference/documentation-coverage.md").write_text(report(rows))
+        (ROOT / "docs/reference/documentation-coverage.md").write_text(report(rows), encoding="utf-8")
     missing = [f"{path}: undocumented {name}" for path, symbols in rows.items() for name, ok in symbols if not ok]
     problems = missing + link_problems()
     for problem in problems:

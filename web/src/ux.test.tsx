@@ -864,6 +864,16 @@ it("Fix first names an urgent fix it can't plan above the cards, and a less urge
   expect(order(curl, later)).toBeTruthy();  // the less urgent one still follows
 });
 
+it("Fix first with nothing it can plan names them once, under the empty list, never as 'also urgent'", async () => {
+  // review: production locked and no test machines put every fix "ahead" of no cards at all, low ones called urgent
+  serve({ "GET /api/summary": { assets: 2, open_by_priority: { low: 1 }, attention: [], hosts_not_reporting: 0, agents_need_attention: 0,
+    top_actions: [{ ...ACTION, package: "curl", plannable: false, max_score: 10 }] },
+    "GET /api/settings": { production_remediation_allowed: true }, "GET /api/assets": [], "GET /api/coverage": { assessed: 0, inventory_only: 0, not_assessed: [] } });
+  wrap(<Home />);
+  expect((await screen.findByRole("link", { name: "curl" })).closest("p")).toHaveTextContent(/One more can't be planned here/);
+  expect(screen.queryByText(/also urgent/i)).toBeNull();
+});
+
 it("agent updates: an agent with no version reported is named, never an empty label", () => {
   const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
   render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);

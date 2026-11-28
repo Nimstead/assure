@@ -48,12 +48,12 @@ it("answers better or worse in one sentence, with the pace on fix now", () => {
   expect(progressSentences({ days: series(365, 1100, 999) })[1]).toBe("At the last four weeks' pace, the 999 fix-now findings would take more than a year to clear.");
 });
 
-it("a young fleet's first inventory is where the count starts, not a rise from nothing", () => {
+it("the first day with findings is where the count starts, not a rise from nothing", () => {
   // critique: "rose from 0 to 39,620 in the last 90 days" read as risk exploding; it was the first scan
   const days = series(30, 9, 5).map((d, i) => (i < 20 ? { ...d, open: { "fix-now": 0, next: 0, planned: 0, low: 0 } } : d));
-  expect(progressSentences({ days })[0]).toMatch(/^Since the first inventory on 11 Nov, open findings fell from 106 to 105; none are overdue\.$/);
+  expect(progressSentences({ days })[0]).toMatch(/^Since findings first appeared on 11 Nov, open findings fell from 106 to 105; none are overdue\.$/);
   const today = series(30, 0, 0, 0).map((d, i) => (i === 29 ? { ...d, open: { ...d.open, low: 40 } } : d));
-  expect(progressSentences({ days: today })[0]).toBe("40 open findings, all from the first inventory on 20 Nov; none are overdue.");
+  expect(progressSentences({ days: today })[0]).toBe("40 open findings, all found on 20 Nov; none are overdue.");
 });
 
 it("rounds the axis to 1, 2 or 5 and labels UTC days", () => {

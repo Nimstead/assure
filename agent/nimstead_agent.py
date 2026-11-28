@@ -2627,6 +2627,34 @@ def _list_ended(e):
     return getattr(e, "winerror", None) in (None, 259)
 
 
+def _restore_beside(tar, m, root, kw):
+    """Restore regular file or hardlink member m as a new file beside its path, then rename it over the path. Before 3.13,
+    tarfile writes a hardlink whose path exists into that path's inode, the in-place write this avoids. The new file
+    takes the old one's SELinux label: one created here gets its folder's default (sshd_exec_t would become bin_t)."""
+    dst = os.path.join(root, m.name)
+    tmp = dst + ".nimstead-restore"
+    try:
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        if m.islnk():
+            os.link(os.path.join(root, m.linkname), tmp)
+        else:
+            staged = copy.copy(m)  # TarInfo.replace is 3.12+; the agent runs on 3.9
+            staged.name = m.name + ".nimstead-restore"
+            tar.extract(staged, root, **kw)
+            try:
+                os.setxattr(tmp, "security.selinux", os.getxattr(dst, "security.selinux"))
+            except (OSError, AttributeError):  # no SELinux, no label, no old file, or not Linux
+                pass
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.remove(tmp)  # never leave a restored copy (setuid bits and all) lying beside the path
+        except OSError:
+            pass
+        raise
+
+
 def windows_apps(reg, users=None, problems=None, machine_only=False):
     """Return sorted WinApp rows from registry Uninstall entries.
 
@@ -3030,7 +3058,7 @@ def scan_remote(server, hosts, token, insecure_http=False, keys_path=None, run=N
             try:
                 ipaddress.ip_address(host)
             except ValueError:  # typed by name: keys are cached by the reported name, so a host can't report as another one
-                if host.split(".")[0].lower() != name.split(".")[0].lower():
+                if host.split(".")[0][:15].lower() != name.split(".")[0][:15].lower():  # COMPUTERNAME is NetBIOS: 15 at most
                     raise AgentError(f"reports itself as {name}: scan it by that name") from None
             if server not in keys.get(name.lower(), {}):
                 if not token:
@@ -4552,12 +4580,8 @@ class Job:
             with tarfile.open(self.artefacts[0][0]) as tar:
                 kw = {"filter": "fully_trusted"} if hasattr(tarfile, "fully_trusted_filter") else {}  # our own, sha-verified
                 for m in tar.getmembers():  # noqa: S202 — exact restore needs owners/setuid; archive verified above
-                    if m.isreg():  # a new inode, as rpm/apk do: writing in place fails on a running binary (ETXTBSY)
-                        tmp = m.name + ".nimstead-restore"  # and can crash services that map the library
-                        staged = copy.copy(m)  # TarInfo.replace is 3.12+; the agent runs on 3.9
-                        staged.name = tmp
-                        tar.extract(staged, self.root, **kw)
-                        os.replace(os.path.join(self.root, tmp), os.path.join(self.root, m.name))
+                    if m.isreg() or m.islnk():  # a new inode, as rpm/apk do: writing in place fails on a running binary
+                        _restore_beside(tar, m, self.root, kw)  # (ETXTBSY) and can crash services that map the library
                     else:
                         tar.extract(m, self.root, **kw)
             for _d, bak, _, real in self.db_backups:
@@ -6912,6 +6936,8 @@ def _open_regular(path, mode="rb", **kw):
     """path opened for reading if it is a regular file at open time, else None: never through a link and never blocking
     on a FIFO, which a local user can rename over a file between a check and the open (as _is_elf)."""
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    if os.name == "nt" and not regular(path):  # Windows has no O_NOFOLLOW: refuse a link before opening, as before
+        return None
     try:
         fd = os.open(path, flags)
     except OSError:

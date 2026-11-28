@@ -329,6 +329,8 @@ def test_scan_remote_wont_report_a_host_under_another_name(tmp_path):
     failed = agent.scan_remote("https://n", ["srv2", "srv1.corp.example", "10.0.0.5"], "tok", keys_path=keys, run=fake_remote([]), post_fn=post_fn)
     assert list(failed) == ["srv2"] and "SRV1" in failed["srv2"]  # a name typed differs from the one reported: refused
     assert sent == ["/api/agent/enroll", "/api/agent/inventory", "/api/agent/inventory"]  # a matching FQDN and an address still report
+    long = {**REMOTE_DUMP, "host": "FILESERVER-PROD"}  # COMPUTERNAME is the NetBIOS name: 15 characters at most
+    assert not agent.scan_remote("https://n", ["fileserver-prod-01.corp.example"], "tok", keys_path=keys, run=fake_remote([], long), post_fn=post_fn)
 
 
 def test_dpkg_reports_held_and_still_installed_packages():

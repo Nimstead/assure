@@ -40,7 +40,8 @@ export function Home() {
   const now = s.top_actions.filter(plannable), later = s.top_actions.filter((a) => !plannable(a));
   // one that can't be planned here but outranks a card is named above the cards, not after them (critique: a KEV came last)
   const rank = (a: Action) => PRIORITIES.indexOf(priorityOf(a.max_score, a.kev)), lowest = Math.max(-1, ...now.map(rank));
-  const ahead = later.filter((a) => !now.length || rank(a) < lowest), behind = later.filter((a) => !ahead.includes(a));
+  // with no card at all there's nothing to come before: the one line under the empty list names them, in risk order
+  const ahead = now.length ? later.filter((a) => rank(a) < lowest) : [], behind = later.filter((a) => !ahead.includes(a));
   const why = "Their own updater, a policy, or production machines while production remediation is off";
   const named = (xs: Action[]) => xs.map((a, i) => <Fragment key={a.ecosystem + a.package}>
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap align-middle"><PriorityPill priority={priorityOf(a.max_score, a.kev)} />{a.kev && <KevBadge />}

@@ -231,7 +231,9 @@ def test_sso_required_blocks_password_login_for_its_users_only(env, idp):
 
 def test_sso_users_have_no_password_login(env, idp):
     app, _ = make(env, idp)
-    sso_login(app, idp)
+    c, _ = sso_login(app, idp)
+    r = c.post("/api/me/mfa", json={"setup": "x", "code": "000000"})  # review: a 500 (no hash to verify) before
+    assert r.status_code == 409 and "single sign-on" in r.json()["detail"]
     for pw in ("!", "", "correct horse battery"):
         assert TestClient(app).post("/api/auth/login", json={"email": "jane@corp.example.com", "password": pw}).status_code == 401
 

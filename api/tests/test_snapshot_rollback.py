@@ -153,3 +153,30 @@ def test_dnf_with_nothing_to_do_is_refused_in_the_dry_run(tmp_path):
             raise AssertionError("dry run passed")
         except agent.StepFailed as e:
             assert "simulate upgrade failed" in str(e) or "offers no upgrade for: openssl" in str(e)
+
+
+def test_a_hardlinked_pair_restores_as_new_files_never_in_place(tmp_path):
+    """Review: before Python 3.13 tarfile wrote a hardlink member whose path existed into that path's inode: the ETXTBSY
+    write the new-inode restore removes. Both paths come back as one new file; no temp copy is left beside them."""
+    import os
+    import tarfile
+    src = tmp_path / "src" / "usr" / "bin"
+    src.mkdir(parents=True)
+    (src / "perl").write_text("old perl")
+    os.link(src / "perl", src / "perl5.36")
+    with tarfile.open(tmp_path / "rb.tar", "w") as tar:
+        for n in ("perl", "perl5.36"):
+            tar.add(src / n, arcname=f"usr/bin/{n}", recursive=False)
+    root = tmp_path / "root" / "usr" / "bin"
+    root.mkdir(parents=True)
+    (root / "perl").write_text("new perl")
+    os.link(root / "perl", root / "perl5.36")  # the upgraded pair, which a running process may hold
+    running = (root / "perl").stat().st_ino
+    with tarfile.open(tmp_path / "rb.tar") as tar:
+        members = tar.getmembers()
+        assert [m.islnk() for m in members] == [False, True]
+        for m in members:
+            agent._restore_beside(tar, m, str(tmp_path / "root"), {})
+    assert (root / "perl").read_text() == (root / "perl5.36").read_text() == "old perl"
+    assert (root / "perl").stat().st_ino == (root / "perl5.36").stat().st_ino != running
+    assert not list(root.glob("*.nimstead-restore"))

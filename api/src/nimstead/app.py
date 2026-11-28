@@ -890,8 +890,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         browser session. Commit quota first. Existing MFA requires a valid current factor; a
         first authenticator requires the current password.
         Setup success replaces secret/recovery hashes and appends evidence. Existing
-        sessions/API tokens remain. Return 403/422/429 for refusal. Backend/shape,
-        evidence and storage errors can propagate."""
+        sessions/API tokens remain. SSO-origin users return 409; 403/422/429 for refusal.
+        Backend/shape, evidence and storage errors can propagate."""
+        if user.origin != "password":  # as start_mfa: no password to check, and the identity provider owns MFA
+            raise HTTPException(409, "You sign in with single sign-on; your identity provider handles MFA")
         if over_limit(s, "mfa-setup:" + user.id, LOGIN_MAX_FAILURES, LOGIN_WINDOW):  # not "mfa:": that's sign-in guessing
             raise HTTPException(429, "Too many attempts; try again in 15 minutes")
         if user.totp_secret and not second_factor(s, user, body.current_code):

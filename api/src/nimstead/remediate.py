@@ -739,7 +739,8 @@ def dispatch(s: Session, asset: Asset) -> list[dict]:
                 _log(s, job, "remediation_held", reason=why)
                 continue
         if job.manager == "windows":  # after the gates: a held job is still cancelled by the kill switch at once
-            if win_busy:
+            # not has_win: approved after the read before the lock, so its group's peers weren't checked; the next poll does
+            if win_busy or not has_win:
                 continue  # stays approved; handed out once the current one (here or in its group) reports
             win_busy = True
         job.status = "dispatched"

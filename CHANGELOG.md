@@ -7,12 +7,12 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 The agent changed (its version goes up at release). One database migration: an index on the ledger.
 
 ### Upgrade notes
-- **Turning on Require SSO now signs out members who are signed in with a password.** Admins stay signed in (break-glass).
+- **Turning on Require SSO now signs out members whose accounts use a password**, however they signed in. Admins stay signed in (break-glass).
 - **A first authenticator added from Account settings asks for the current password.** API: `POST /api/me/mfa` takes `current_password` when the account has no authenticator yet.
 - **Signed evidence packs are capped at 20 an hour per organisation** (`429` past that). The Evidence page isn't capped.
 
 ### Highlights
-- **Safer rollbacks and sturdier reports.** On Alpine, and on RPM systems without snapper, a rollback now restores each file as a new file. It used to write over the running binary, which failed partway through, so the rollback was left half done. One corrupt jar, or a package database with a non-UTF-8 file name, no longer stops a machine's reports.
+- **Safer rollbacks and sturdier reports.** On Alpine, and on RPM systems without snapper, a rollback now restores each file, hardlinks included, as a new file with the old file's SELinux label. It used to write over the running binary, which failed partway through, so the rollback was left half done. One corrupt jar, or a package database with a non-UTF-8 file name, no longer stops a machine's reports.
 - **Fix first leads with what's urgent.** A Fix now or KEV fix that Assure can't plan is named above the recommended fixes, no longer in the last line.
 
 ### Security
@@ -30,7 +30,7 @@ The agent changed (its version goes up at release). One database migration: an i
 - Assets: a bulk edit refreshes once instead of once per machine, attack paths refresh after an edit, Undo puts back **Directory source**, and `?show=` clears when the link drops it.
 - Findings: rows aren't repeated while agents report, a finding a few hours past its deadline reads **Overdue** instead of "due today", and the help text gives the real Fix now threshold (75).
 - Attack paths: on phones, the machines table stacks into labelled cards. A setting is called "setting ssh-root-password" instead of `CFG:ssh-root-password`.
-- Progress counts a young fleet from its first inventory instead of saying findings "rose from 0".
+- Progress counts from the first day with findings instead of saying they "rose from 0".
 
 ### Changed
 - SBOM uploads and asset edits release the organisation's ledger lock before rescanning. Every rescan locks its asset, so a report and the hourly re-match can't both add the same finding. Each report no longer reads the organisation's whole ledger.

@@ -4,8 +4,13 @@ All notable changes to Nimstead Assure. The format follows [Keep a Changelog](ht
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-11-27 (preview)
+
+Agent 0.11.0, unchanged. No database migration.
+
 ### Upgrade notes
-- **API:** `GET /api/attack-paths` adds `flow`: every machine reached, in full, with its route, the link onto it and which choke points cut it off, and each way in's own reach.
+- **Attack paths moved from Assets to their own page**, **Attack paths** in the sidebar. Assets keeps one line linking to it.
+- **API:** `GET /api/attack-paths` adds `flow`: every machine reached, in full, with its route, the link onto it and which choke points cut it off, and each way in's own reach. A `retire-key` choke point adds `held_on`, `trusted_by` and `accounts`, and a `setting` one adds `on`.
 
 ### Highlights
 - **Attack paths have a page of their own.** It opens on **Cut these first**, with the top change already chosen. Below it, the fleet's exposure is drawn as one flow: the ways in, the keys and settings machines are reached through, and the machines reached by owner or criticality, with what the chosen change cuts off solid and the rest hatched. A row per machine follows, with its route, how sure, and which changes cut it off. Columns fold past seven rows, so it reads the same at thousands of machines.
@@ -872,7 +877,8 @@ The first early-access release. Everything listed is proven by tests and, for an
 
 Licensed under FSL-1.1-ALv2: this release becomes available under Apache 2.0 on 2028-10-27.
 
-[Unreleased]: https://github.com/Nimstead/assure/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/Nimstead/assure/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/Nimstead/assure/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/Nimstead/assure/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/Nimstead/assure/compare/v0.14.1...v0.15.0
 [0.14.1]: https://github.com/Nimstead/assure/compare/v0.14.0...v0.14.1

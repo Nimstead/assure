@@ -213,7 +213,9 @@ def main(keep=False):
         res = json.loads([ln for ln in out.splitlines() if ln.startswith("{")][-1])
         same = next(p for p in json.loads(agent("collect")[1])["packages"] if p["name"] == pkg["name"])["version"] == pkg["version"]
         note("forged downgrade job", outcome=res["outcome"], error=res["error"], unchanged=same)
-        assert res["outcome"] == "aborted" and "not newer" in (res["error"] or "") and same, "a downgrade was not refused"
+        # apt and apk compare versions first ("not newer"); for rpm managers the dry run is the downgrade check (Job.newer)
+        said = "not newer" in (res["error"] or "") or (manager in ("dnf", "zypper") and "simulate upgrade failed" in (res["error"] or ""))
+        assert res["outcome"] == "aborted" and said and same, "a downgrade was not refused"
 
         # 3) evidence pack verifies offline against the pinned key
         z = zipfile.ZipFile(io.BytesIO(c.get("/api/evidence/pack", params={"days": 1}).content))

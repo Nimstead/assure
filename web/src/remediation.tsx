@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -76,7 +76,9 @@ export function RemediationPage() {
   const hold = (j: Job) => prodBlocked(j) ? "production remediation is off" : j.forward_only ? "can't be undone, so each is approved on its own" : null;
   const [several, setManyJobs] = useState<Job[] | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());  // which of them to approve: all to start, untick to approve fewer
-  const setMany = (js: Job[] | null) => { setManyJobs(js); setChosen(new Set(js?.map((j) => j.id))); };
+  const [manyAck, setManyAck] = useState(false);  // read why it failed elsewhere in this ring (RingFailure)
+  const setMany = (js: Job[] | null) => { setManyJobs(js); setChosen(new Set(js?.map((j) => j.id))); setManyAck(false); };
+  const manyFailed = several ? ringFailures(q.data ?? [], several[0]!, byId) : [];
   const picked = several?.filter((j) => chosen.has(j.id)) ?? [];
   // one approval request per machine: each is its own ledger entry and its own self-approval check, as approving them one by one
   const many = useMutation({
@@ -135,9 +137,9 @@ export function RemediationPage() {
         error={approve.error?.message} onConfirm={() => target && approve.mutate(target)} />
       <ConfirmDialog open={!!several} onOpenChange={(o) => !o && setMany(null)} title={`Approve this fix on the ${byId.get(several?.[0]?.asset_id ?? "")?.ring === 0 ? "canary" : "broad"} ring?`}
         description={<><strong className="font-semibold">Upgrade {several?.[0]?.action_key.split("|")[1]}</strong>. Each machine is approved and recorded on its own, as if you approved them one by one.</>}
-        confirmLabel={`Approve ${plural(picked.length, "machine")} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length} onConfirm={() => many.mutate(picked)}>
+        confirmLabel={`Approve ${plural(picked.length, "machine")} and run`} pendingLabel="Approving…" pending={many.isPending} error={many.error} blocked={!picked.length || (manyFailed.length > 0 && !manyAck)} onConfirm={() => many.mutate(picked)}>
         {several && <>
-          <RingFailure failed={ringFailures(q.data ?? [], several[0]!, byId)} onGo={() => setMany(null)} />
+          <RingFailure failed={manyFailed} onGo={() => setMany(null)} acked={manyAck} onAck={setManyAck} />
           <fieldset className="mt-3 text-sm">
             <legend className="text-muted">Machines to approve now</legend>
             <ul className="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:gap-x-4">
@@ -336,12 +338,19 @@ export function ringFailures(jobs: Job[], job: Pick<Job, "action_key" | "asset_i
 }
 
 /** The crimson first line of an approval when its ring has a failure; each machine opens its job (closing the dialog). */
-function RingFailure({ failed, onGo }: { failed: Job[]; onGo?: () => void }) {
+/** The fix failed elsewhere in this ring: said first, and approving more waits until the person says they read why. */
+function RingFailure({ failed, onGo, acked, onAck }: { failed: Job[]; onGo?: () => void; acked: boolean; onAck: (v: boolean) => void }) {
   if (!failed.length) return null;
   return (
-    <p className="mt-3 border border-now-fg p-3 text-sm text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}>
-      <Link to="/remediation" hash={jobAnchor(j.id)} onClick={onGo} className="whitespace-nowrap font-medium text-now-fg underline">{j.hostname}</Link>{i < failed.length - 1 ? ", " : ""}</Fragment>)}{" "}
-      in this ring. Review {failed.length === 1 ? "it" : "them"} before approving more.</p>
+    <div className="mt-3 border border-now-fg p-3 text-sm">
+      <p className="text-now-fg">This fix didn't work on {failed.map((j, i) => <Fragment key={j.id}>
+        <Link to="/remediation" hash={jobAnchor(j.id)} onClick={onGo} className="whitespace-nowrap font-medium text-now-fg underline">{j.hostname}</Link>{i < failed.length - 1 ? ", " : ""}</Fragment>)}{" "}
+        in this ring. Review {failed.length === 1 ? "it" : "them"} before approving more.</p>
+      <label className="mt-2 flex tap w-fit cursor-pointer items-center gap-2">
+        <input type="checkbox" className="size-4 accent-[var(--ink)]" checked={acked} onChange={(e) => onAck(e.target.checked)} />
+        I've reviewed why it didn't work
+      </label>
+    </div>
   );
 }
 
@@ -461,10 +470,12 @@ export function ApproveDialog({ job, onOpenChange, onConfirm, pending, error, ow
   ahead?: boolean;
 }) {
   const fwd = !!job?.forward_only;
+  const [ack, setAck] = useState(false);
+  useEffect(() => setAck(false), [job?.summary, job?.hostname]);  // each approval reads its own ring's failures
   return (
     <ConfirmDialog open={!!job} onOpenChange={onOpenChange} title={fwd ? "Approve a fix that can't be undone?" : "Approve this fix?"} description={<><strong className="font-semibold">{job?.summary}</strong>.</>}
-      confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm} blocked={production}>
-      <RingFailure failed={ringFailed} onGo={onGo} />
+      confirmLabel={fwd ? "Approve: it can't be undone" : "Approve and run"} pendingLabel="Approving…" destructive={fwd} pending={pending} error={error} onConfirm={onConfirm} blocked={production || (ringFailed.length > 0 && !ack)}>
+      <RingFailure failed={ringFailed} onGo={onGo} acked={ack} onAck={setAck} />
       {ahead && !production && <p className="mt-3 border border-next-fg p-3 text-sm">This fix hasn't succeeded on a canary machine yet. Approving runs it on {job?.hostname} now, ahead of the canary; automatic rollout would wait.</p>}
       {production && <p className="mt-3 border border-now-fg p-3 text-sm">{job?.hostname} is a production machine, and this server changes test machines only, so this fix can't run yet. <Link to="/settings" hash="remediation" className="font-medium underline">How to turn production remediation on</Link></p>}
       {context && <p className="mt-2 text-sm text-muted">{context}</p>}

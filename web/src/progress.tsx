@@ -22,7 +22,11 @@ export function progressSentences(p: Pick<Progress, "days">): [string, string] {
   if (!first || !last) return ["Nothing to report yet.", ""];
   const span = `the last ${p.days.length} days`;
   const a = openTotal(first), b = openTotal(last);
-  const lead = a === b ? `Open findings held at ${n(b)} over ${span}` : `Open findings ${b < a ? "fell" : "rose"} from ${n(a)} to ${n(b)} in ${span}`;
+  // nothing open at the start is a fleet not yet scanned: count from its first inventory, never a "rise from 0" (critique)
+  const start = a === 0 ? p.days.find((d) => openTotal(d) > 0) : undefined, s0 = start ? openTotal(start) : 0;
+  const lead = start === last ? `${plural(b, "open finding")}, all from the first inventory on ${dayLabel(last.date)}`
+    : start ? `Since the first inventory on ${dayLabel(start.date)}, open findings ${s0 === b ? "held at " + n(b) : `${b < s0 ? "fell" : "rose"} from ${n(s0)} to ${n(b)}`}`
+    : a === b ? `Open findings held at ${n(b)} over ${span}` : `Open findings ${b < a ? "fell" : "rose"} from ${n(a)} to ${n(b)} in ${span}`;
   const overdue = last.overdue ? `; ${n(last.overdue)} ${last.overdue === 1 ? "is" : "are"} overdue.` : "; none are overdue.";
   const from = Math.max(0, p.days.length - 29);  // four weeks back, or the start of a shorter range
   const weeks = (p.days.length - 1 - from) / 7;

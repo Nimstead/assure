@@ -299,13 +299,13 @@ export function Palette({ open, onOpenChange, signOut, nextTheme }: { open: bool
       byName.set(g.package, { hosts: e.hosts + g.hosts, dists: e.dists + 1 });  // a machine runs one distribution: hosts add up
     }
     const packages: Cmd[] = [...byName].slice(0, 3).map(([name, e]) => ({
-      id: `pkg-${name}`, label: `Package: ${name}`, hint: `${e.dists > 1 ? `${e.dists} distributions · ` : ""}${plural(e.hosts, "host")}`,
+      id: `pkg-${name}`, label: `Package: ${name}`, hint: `${e.dists > 1 ? `${e.dists} distributions · ` : ""}${plural(e.hosts, "asset")}`,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: name, group: "package" }) })),
     }));
     const hits: Cmd[] = (query === term ? found.data ?? [] : []).slice(0, 8).map((g) => ({
       // a search can match on host names too: then the count is on those hosts only, and says so
       id: `vuln-${g.key}`, code: g.key, label: g.packages > 1 ? `${g.packages} packages` : g.package,
-      hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "host" : "hosts"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
+      hint: `${g.hosts.toLocaleString("en")} ${g.hosts === 1 ? "asset" : "assets"}${`${g.key} ${g.package}`.toLowerCase().includes(term.toLowerCase()) ? "" : ` matching “${term}”`}`,
       run: done(() => navigate({ to: "/findings", search: filtersToSearch({ ...parseFilters({}), fixable: false, q: g.key }) })),
     }));
     // Hosts come from the already-cached asset list: no extra request, and a host is one jump from its findings.

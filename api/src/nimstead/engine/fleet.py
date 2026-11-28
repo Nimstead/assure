@@ -605,16 +605,17 @@ def choke_points(judged: list[dict], gives: dict, g: _Graph, names: dict, trunca
 def _action(key: tuple, c: dict, names: dict, judged: list[dict]) -> str:
     """A choke point in words: what to do, and where."""
     n = lambda h: names.get(h, h)  # noqa: E731
+    said = lambda r: "setting " + r[4:] if r.startswith("CFG:") else r  # noqa: E731 — people read it: no internal prefix (critique)
     if key[0] == "way-in":
         h = next(x for x in judged if x["id"] == key[1])
         net = next((p for p in (h.get("report") or {}).get("attack_paths") or [] if p["kind"] == "network"), None)
         refs = [w["ref"] for w in net["steps"][0]["ways"]] if net else []
         count = net["steps"][0]["count"] if net else 0
-        return f"Close {n(key[1])}'s way in" + (": " + ", ".join(refs[:3]) + (f" and {count - 3} more" if count > 3 else "") if refs else "")
+        return f"Close {n(key[1])}'s way in" + (": " + ", ".join(map(said, refs[:3])) + (f" and {count - 3} more" if count > 3 else "") if refs else "")
     if key[0] == "retire-key":
         held = sorted(f"{p} on {n(h)}" for h, p in c["holders"])
         return (f"Retire the SSH key {key[1][:19]}…: delete it ({'; '.join(held[:3])}{' and more' if len(held) > 3 else ''}) and remove it from "
                 f"the authorized_keys of the {len(c['trusted'])} machine{'s' * (len(c['trusted']) != 1)} that trust it")
     if key[0] == "untrust-key":
         return f"Remove the key {key[1][:19]}… from {key[3]}'s authorized_keys on {n(key[2])}"
-    return f"Fix {key[1]} on {n(key[2])}"
+    return f"Fix {said(key[1])} on {n(key[2])}"

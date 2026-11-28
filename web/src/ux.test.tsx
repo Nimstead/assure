@@ -355,8 +355,8 @@ it("the palette keeps the highlighted command when late results arrive, and find
   expect(chosen).toBeTruthy();
   await waitFor(() => expect(release).not.toBeNull());  // the debounced findings search has been sent
   await act(async () => { release!(new Response(JSON.stringify([{ key: "CVE-1", vuln_id: "CVE-1", package: "go", packages: 1, hosts: 34, findings: 34 }]), { status: 200 })); });
-  await screen.findByRole("option", { name: /CVE-1.*34 hosts/ });  // the real total, from the grouped count
-  expect(screen.getByRole("option", { name: /Package: go.*2 distributions · 4 hosts/ })).toBeInTheDocument();  // one row, both distributions
+  await screen.findByRole("option", { name: /CVE-1.*34 assets/ });  // the real total, from the grouped count
+  expect(screen.getByRole("option", { name: /Package: go.*2 distributions · 4 assets/ })).toBeInTheDocument();  // one row, both distributions
   const ids = within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.id);
   expect(new Set(ids).size).toBe(ids.length);  // every option has its own id, so the arrow keys can reach each
   expect(box.getAttribute("aria-activedescendant")).toBe(chosen);  // a new row arriving above didn't move the highlight
@@ -848,6 +848,22 @@ it("Fix first names the top fixes it can't plan, with their priority", async () 
   expect(screen.getAllByText("Fix now").length).toBeGreaterThan(0);  // its priority as a pill, with KEV beside it
 });
 
+it("Fix first names an urgent fix it can't plan above the cards, and a less urgent one after them", async () => {
+  serve({ "GET /api/summary": { assets: 3, open_by_priority: { "fix-now": 1, next: 2 }, attention: [], hosts_not_reporting: 0, agents_need_attention: 0,
+    top_actions: [{ ...ACTION, package: "curl", max_score: 60 },
+      { ...ACTION, ecosystem: "Maven", package: "org.apache.logging.log4j:log4j-core", plannable: false, kev: true, max_score: 100 },
+      { ...ACTION, ecosystem: "Maven", package: "org.yaml:snakeyaml", plannable: false, max_score: 30 }] },
+    "GET /api/settings": { production_remediation_allowed: true }, "GET /api/assets": [], "GET /api/coverage": { assessed: 0, inventory_only: 0, not_assessed: [] } });
+  wrap(<Home />);
+  const urgent = await screen.findByRole("link", { name: "log4j-core" });
+  const later = screen.getByRole("link", { name: "snakeyaml" });
+  expect(urgent.closest("p")).toHaveTextContent(/also urgent, and it can't be planned here/i);
+  const order = (a: Element, b: Element) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
+  const curl = screen.getAllByText(/curl/)[0]!;
+  expect(order(urgent, curl)).toBeTruthy();  // above the first card
+  expect(order(curl, later)).toBeTruthy();  // the less urgent one still follows
+});
+
 it("agent updates: an agent with no version reported is named, never an empty label", () => {
   const a = (id: string, v: string | null) => ({ id, hostname: id, kind: "host", agent_update: "reinstall", agent_version: v } as unknown as Asset);
   render(<AgentUpdateSummary assets={[a("h1", "0.6.9"), a("h2", ""), a("h3", null)]} />);
@@ -892,6 +908,15 @@ it("approve: a machine whose ring has a failure for this fix says so first, in e
   expect(ringFailures(jobs, jobs[2]!, byId)).toEqual([]);
   render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[jobs[1]!]} onOpenChange={() => {}} onConfirm={() => {}} />);
   expect(screen.getByRole("alertdialog")).toHaveTextContent(/^Approve this fix\?.*This fix didn't work on b1 in this ring/);
+});
+
+it("approve: after a failure in the ring, approving waits until the person says they reviewed it", async () => {
+  const failed = { id: "3", asset_id: "b1", status: "failed", action_key: "Ubuntu:24.04|curl", hostname: "b1" } as unknown as Job;
+  render(<ApproveDialog job={{ summary: "Upgrade curl", hostname: "b2" }} ringFailed={[failed]} onOpenChange={() => {}} onConfirm={() => {}} />);
+  const go = screen.getByRole("button", { name: "Approve and run" });
+  expect(go).toBeDisabled();
+  await userEvent.click(screen.getByRole("checkbox", { name: "I've reviewed why it didn't work" }));
+  expect(go).toBeEnabled();
 });
 
 it("rollouts: the machine a fix didn't work on is named on the card, not only counted inside the folded list", () => {

@@ -271,7 +271,7 @@ function ViewControls({ f, set }: { f: FindingsFilters; set: (p: Partial<Finding
     </div>
   );
 }
-const SORT_OPTIONS: [FindingSort, string][] = [["score", "Highest score"], ["vuln", "Vulnerability"], ["package", "Package"], ["host", "Host"], ["newest", "Newest"]];
+const SORT_OPTIONS: [FindingSort, string][] = [["score", "Highest score"], ["vuln", "Vulnerability"], ["package", "Package"], ["host", "Asset"], ["newest", "Newest"]];
 
 /** One row per vulnerability or package: how far it reaches, and the worst of it. Opening one lists its findings. */
 function Groups({ rows, by, onPick }: { rows: FindingGroupRow[]; by: "vuln" | "package"; onPick: (key: string, ecosystem: string) => void }) {
@@ -328,7 +328,7 @@ const RULE_EVIDENCE = {
 } as const;
 
 const COLS = ["prio", "vuln", "pkg", "ver", "host", "score", "reason"] as const;
-const HEADS = ["Priority", "Vulnerability", "Package", "Installed → fixed", "Host", "Score", "Why"];
+const HEADS = ["Priority", "Vulnerability", "Package", "Installed → fixed", "Asset", "Score", "Why"];
 // the column each header sorts by; priority follows score
 const SORT_BY: (FindingSort | null)[] = ["score", "vuln", "package", null, "host", "score", null];
 // Phones hide the header row, so each cell names its column for screen readers there.

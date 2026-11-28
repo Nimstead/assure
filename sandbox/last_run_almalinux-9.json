@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-d20fbce9",
+    "name": "nimstead-sbx-550b94ce",
     "distro": "AlmaLinux-9"
   },
   {
@@ -99,9 +99,19 @@
     "count": "0"
   },
   {
+    "step": "rollback keeps the SELinux label",
+    "label": true,
+    "content": "old sshd",
+    "new_inode": true,
+    "left": [
+      "sshd"
+    ],
+    "python": "3.9"
+  },
+  {
     "step": "forged downgrade job",
     "outcome": "aborted",
-    "error": "No changes made: simulate upgrade failed: Last metadata expiration check: 0:00:01 ago on Sat Nov 28 03:24:36 2026.\nNo match for argument: libcurl-0.0.1-1\nError: No packages marked for upgrade.",
+    "error": "No changes made: simulate upgrade failed: No match for argument: libcurl-0.0.1-1\nError: No packages marked for upgrade.",
     "unchanged": true
   },
   {
@@ -127,6 +137,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-d20fbce9"
+    "name": "nimstead-sbx-550b94ce"
   }
 ]

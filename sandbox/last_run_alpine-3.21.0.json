@@ -1,7 +1,7 @@
 [
   {
     "step": "creating sandbox distro",
-    "name": "nimstead-sbx-98dd68b6",
+    "name": "nimstead-sbx-e9254412",
     "distro": "alpine-3.21.0"
   },
   {
@@ -120,6 +120,16 @@
     "count": "0"
   },
   {
+    "step": "rollback keeps the SELinux label",
+    "label": true,
+    "content": "old sshd",
+    "new_inode": true,
+    "left": [
+      "sshd"
+    ],
+    "python": "3.12"
+  },
+  {
     "step": "forged downgrade job",
     "outcome": "aborted",
     "error": "No changes made: fix is newer than installed failed: not newer: libcrypto3 0.0.1-r0",
@@ -148,6 +158,6 @@
   },
   {
     "step": "sandbox destroyed",
-    "name": "nimstead-sbx-98dd68b6"
+    "name": "nimstead-sbx-e9254412"
   }
 ]

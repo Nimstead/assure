@@ -37,6 +37,32 @@ from nimstead.db import make_sessionmaker  # noqa: E402
 from nimstead.verify_pack import verify  # noqa: E402
 
 log: list[dict] = []
+# run inside the sandbox as root: one "upgraded" sshd labelled sshd_exec_t, rolled back by the agent's _restore_beside
+LABEL_CHECK = r"""
+import importlib.util, json, os, sys, tarfile
+spec = importlib.util.spec_from_file_location("agent", "/opt/nimstead/agent.py")
+a = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(a)
+d = "/root/nimstead-labelcheck"
+for sub in ("old/usr/sbin", "root/usr/sbin"):
+    os.makedirs(os.path.join(d, sub), exist_ok=True)
+with open(d + "/old/usr/sbin/sshd", "w") as f:
+    f.write("old sshd")
+with tarfile.open(d + "/rb.tar", "w") as t:
+    t.add(d + "/old/usr/sbin/sshd", arcname="usr/sbin/sshd")
+dst = d + "/root/usr/sbin/sshd"
+with open(dst, "w") as f:
+    f.write("new sshd")
+want = b"system_u:object_r:sshd_exec_t:s0\x00"
+os.setxattr(dst, "security.selinux", want)
+ino = os.stat(dst).st_ino
+with tarfile.open(d + "/rb.tar") as t:
+    for m in t.getmembers():
+        a._restore_beside(t, m, d + "/root", {})
+print(json.dumps({"label": os.getxattr(dst, "security.selinux") == want, "content": open(dst).read(),
+                  "new_inode": os.stat(dst).st_ino != ino, "left": sorted(os.listdir(d + "/root/usr/sbin")),
+                  "python": "%d.%d" % sys.version_info[:2]}))
+"""
 
 
 def note(step, **kw):
@@ -205,6 +231,12 @@ def main(keep=False):
         left = wsl("sh", "-c", "ls -A /var/lib/nimstead/rollback 2>/dev/null | wc -l")[1].strip()
         note("rollback copies left after success and rollback", count=left)
         assert left == "0", "rollback copies were left behind"
+        # the new-file restore keeps each file's SELinux label (a new file gets its folder's default: sshd_exec_t would
+        # become bin_t). WSL doesn't enforce SELinux, but root on ext4 stores the attribute: the agent's own code copies it
+        rc, out = wsl("python3", "-", input=LABEL_CHECK.encode(), check=False)
+        label = json.loads(out.strip().splitlines()[-1]) if rc == 0 and out.strip() else {"error": wsl.last_stderr[-300:]}
+        note("rollback keeps the SELinux label", **label)
+        assert label.get("label") and label.get("content") == "old sshd" and label.get("new_inode") and label.get("left") == ["sshd"],             "a restored file lost its SELinux label, its content, or left a copy beside it"
         pkg = next(p for p in json.loads(agent("collect")[1])["packages"] if p["name"] == success["job"]["packages"][0]["name"])
         manager = success["job"]["manager"]
         forged = {"id": "forged1", "manager": manager, "settle_seconds": 0, "health_units": [],

@@ -625,6 +625,25 @@ it("Findings: the drawer finds a fix in progress among active jobs only, however
   expect(urls).toEqual(["/api/remediation/jobs?status=planned,approved,dispatched,verifying"]);
 });
 
+it("Findings: the drawer's a key opens Accept risk, and never submits the open form", async () => {
+  // review: the old selector clicked the first enabled button under the accept slot: with the form open, its submit
+  const f = { id: "f1", asset_id: "a1", hostname: "web-1", ecosystem: "Debian:12", package: "openssl", installed_version: "1", fixed_version: "2",
+    vuln_id: "CVE-1", advisory_ids: [], summary: "", cvss: null, epss: null, kev: false, score: 50, priority: "next", reasons: [], status: "open",
+    first_seen: "2026-11-01T00:00:00", last_seen: "2026-11-08T00:00:00", resolved_at: null, due: null, setting_fix: false, rule_evidence: null };
+  const calls = serve({ "GET /api/findings": [f], "GET /api/assets": [{ id: "a1", hostname: "web-1", kind: "host" }], "GET /api/findings/f1": f,
+    "GET /api/remediation/jobs": [], "GET /api/me": { email: "a@example.com", admin: true } });
+  wrap(<FindingsPage search={{ f: "f1" }} />);
+  await screen.findByRole("button", { name: "Accept risk" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Accept risk" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("dialog"));
+  await userEvent.keyboard("a");
+  expect(await screen.findByLabelText(/Reason/)).toBeInTheDocument();
+  screen.getByRole("button", { name: "Cancel" }).focus();
+  await userEvent.keyboard("a");
+  expect(screen.queryByText(/Say why in at least 10 characters/)).toBeNull();
+  expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+});
+
 it("Evidence: the ledger note counts the whole ledger, and says how much of it the period's pack holds", async () => {
   serve({ "GET /api/evidence/ledger": { problems: [], entries: [], total: 900 },
     "GET /api/evidence/report": { controls: [], period: { from: "2026-08-10T00:00:00+00:00", to: "2026-11-08T00:00:00+00:00" },

@@ -286,7 +286,7 @@ function Groups({ rows, by, onPick }: { rows: FindingGroupRow[]; by: "vuln" | "p
             </button>
             {by === "package" && g.ecosystem && <span className="ml-2 text-muted">{g.ecosystem}</span>}
             {g.kev && <span className="ml-2 align-middle"><KevBadge /></span>}
-            <p className="truncate text-muted">{by === "vuln" ? (g.packages > 1 ? `${g.packages} packages` : g.package) : plural(g.vulns, "vulnerability", "vulnerabilities")}{g.fixed_version && (g.ecosystem ? <> · fixed in <span className="font-mono">{g.fixed_version}</span></> : " · fixed versions differ by distro")}</p>
+            <p className="truncate text-muted">{by === "vuln" ? (g.packages > 1 ? `${g.packages} packages` : g.key === `CFG:${g.package}` ? "Setting" : g.package) : plural(g.vulns, "vulnerability", "vulnerabilities")}{g.fixed_version && (g.ecosystem ? <> · fixed in <span className="font-mono">{g.fixed_version}</span></> : " · fixed versions differ by distro")}</p>
           </div>
           <span className="num shrink-0 text-muted">{plural(g.hosts, "machine")}</span>
           <span className="num w-16 shrink-0 text-right text-muted">score {g.score}</span>

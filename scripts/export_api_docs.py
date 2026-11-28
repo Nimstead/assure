@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 from fastapi.routing import APIRoute
 
-from nimstead.app import MAX_BODY, SESSION_COOKIE, create_app
+from nimstead.app import MAX_BODY, create_app, session_cookie
 from nimstead.sbom import MAX_COMPONENTS, MAX_DEPTH, SPDX_VERSIONS, SPEC_VERSIONS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +45,7 @@ def render() -> dict[str, str]:
     schema["info"]["license"] = {"name": "FSL-1.1-ALv2", "url": "https://github.com/Nimstead/assure/blob/main/LICENSE.md"}
     schema["servers"] = [{"url": "/", "description": "The Assure server you operate"}]
     schema["components"]["securitySchemes"] = {
-        "SessionCookie": {"type": "apiKey", "in": "cookie", "name": SESSION_COOKIE,
+        "SessionCookie": {"type": "apiKey", "in": "cookie", "name": session_cookie(),
                           "description": "Browser session. Role and two-step requirements depend on the operation."},
         "ReadToken": {"type": "http", "scheme": "bearer", "bearerFormat": "nmt_",
                       "description": "Organisation token; only accepted on eligible GET/HEAD operations."},

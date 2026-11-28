@@ -250,13 +250,14 @@ def rescan(s: Session, asset: Asset, inventory_received: bool = True, cache: dic
     if ("eol",) not in advisories:  # endoflife.date cycles, once per feed-update pass
         advisories[("eol",)] = {pkg: rec["cycles"] for pkg, rec in s.execute(
             select(Advisory.package, Advisory.record).where(Advisory.ecosystem == "EOL"))}
-    if ("drivers",) not in advisories:  # LOLDrivers' hashes, once per pass
+    # LOLDrivers' hashes, once per pass, and only for a host that reported drivers (every Linux report loaded them)
+    if ("drivers",) not in advisories and any(p.ecosystem == windrivers.ECOSYSTEM for p in pkgs):
         stored = s.scalar(select(Advisory.record).where(Advisory.ecosystem == windrivers.ECOSYSTEM)) or {}
         advisories[("drivers",)] = stored.get("drivers", {})
     acc = s.get(AssetAccess, asset.id) if asset.kind == "host" else None  # who can get in (DECISIONS 165)
     sshd = acc.data.get("sshd") if acc else None
     ssh = linconfig.ssh_listening(runtime.recent_programs(rv.row, t), sshd) if acc else None
-    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories[("drivers",)], acc.data if acc else None, ssh):
+    for x in host_checks(pkgs, asset.facts or {}, t.date(), advisories[("eol",)], advisories.get(("drivers",), {}), acc.data if acc else None, ssh):
         key = (x["ecosystem"], x["package"], x["vuln_id"])
         seen.add(key)
         rec = {"_risk": (x["risk"].score, x["risk"].priority, x["risk"].reasons)} if x.get("risk") else {}

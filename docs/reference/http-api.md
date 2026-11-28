@@ -16,7 +16,7 @@ For response branches, account recovery and token/SSO effects, see [authenticati
 
 | Credential | Where it is accepted | Limits |
 | --- | --- | --- |
-| `nimstead_session` cookie | Browser routes | Organisation membership and role apply; admin changes require two-step sign-in for password users outside open-signup development mode |
+| `__Host-nimstead_session` cookie (`nimstead_session` when `NIMSTEAD_SECURE_COOKIES=0`) | Browser routes | Organisation membership and role apply; admin changes require two-step sign-in for password users outside open-signup development mode |
 | `Bearer nmt_…` | Routes using the current-user dependency, for GET and HEAD | Read-only; acts as the admin who created it; rejected by admin-only and person-only routes |
 | `nme_…` enrolment token | JSON body of `POST /api/agent/enroll` | Creates asset credentials; subject to expiry, revocation, and enrolment quotas |
 | `Bearer nma_…` | Agent routes; its own asset's SBOM upload | Bound to one asset |

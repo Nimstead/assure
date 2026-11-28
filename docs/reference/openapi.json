@@ -6756,7 +6756,7 @@
       "SessionCookie": {
         "description": "Browser session. Role and two-step requirements depend on the operation.",
         "in": "cookie",
-        "name": "nimstead_session",
+        "name": "__Host-nimstead_session",
         "type": "apiKey"
       },
       "UploadToken": {

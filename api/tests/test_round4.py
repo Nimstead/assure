@@ -143,6 +143,23 @@ def test_security_headers(env, monkeypatch):
     assert "content-security-policy" not in TestClient(create_app(env)).get("/api/docs").headers
 
 
+def test_secure_cookies_are_host_only_so_a_sibling_subdomain_cant_plant_one(env, monkeypatch):
+    """Audit: without __Host-, x.example.com could set nimstead_sso (or a session) for Domain=example.com and get a
+    victim signed in as the attacker. __Host- cookies must be Secure, Path=/ and carry no Domain."""
+    import nimstead.app as appmod
+    monkeypatch.setattr(appmod, "SECURE_COOKIES", True)
+    c = TestClient(create_app(env), base_url="https://testserver")
+    r = c.post("/api/auth/signup", json={"email": "a@example.com", "password": PW, "org_name": "Acme"})
+    assert r.status_code == 201, r.text
+    head = r.headers["set-cookie"]
+    assert head.startswith("__Host-nimstead_session=") and "Secure" in head and "Path=/" in head and "Domain" not in head
+    assert c.get("/api/me").status_code == 200  # read back under the same name
+    c.cookies.set("nimstead_session", c.cookies.get("__Host-nimstead_session"))  # the old name, as a sibling would plant it
+    del c.cookies["__Host-nimstead_session"]
+    assert c.get("/api/me").status_code == 401  # never read
+    assert appmod.sso_cookie() == "__Host-nimstead_sso"
+
+
 def test_csp_allows_the_spas_inline_theme_script_by_hash(tmp_path):
     import base64
     import hashlib

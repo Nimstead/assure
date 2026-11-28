@@ -10,6 +10,7 @@ The agent changed (its version goes up at release). One database migration: an i
 - **Turning on Require SSO now signs out members whose accounts use a password**, however they signed in. Admins stay signed in (break-glass).
 - **A first authenticator added from Account settings asks for the current password.** API: `POST /api/me/mfa` takes `current_password` when the account has no authenticator yet.
 - **Signed evidence packs are capped at 20 an hour per organisation** (`429` past that). The Evidence page isn't capped.
+- **Everyone signs in once more after upgrading.** With secure cookies on (the default), the session cookie is now `__Host-nimstead_session` and the SSO flow cookie `__Host-nimstead_sso`, so a sibling subdomain can't plant either and sign someone in as the attacker. The old cookie name isn't read: accepting it would keep that door open.
 
 ### Highlights
 - **Safer rollbacks and sturdier reports.** On Alpine, and on RPM systems without snapper, a rollback now restores each file, hardlinks included, as a new file with the old file's SELinux label. It used to write over the running binary, which failed partway through, so the rollback was left half done. One corrupt jar, or a package database with a non-UTF-8 file name, no longer stops a machine's reports.

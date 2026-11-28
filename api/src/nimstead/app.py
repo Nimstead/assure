@@ -89,8 +89,17 @@ from nimstead.scan import app_coverage, rescan
 from nimstead.versions import comparator_for
 from nimstead.winapps_evidence import EVIDENCE as WINAPP_EVIDENCE
 
-SESSION_COOKIE = "nimstead_session"
-SSO_COOKIE = "nimstead_sso"
+
+def session_cookie() -> str:
+    """The session cookie's name: __Host- whenever cookies are Secure, so a sibling subdomain can't plant one (audit)."""
+    return ("__Host-" if SECURE_COOKIES else "") + "nimstead_session"
+
+
+def sso_cookie() -> str:
+    """The SSO flow cookie's name; with __Host- its path must be /, so it is / always."""
+    return ("__Host-" if SECURE_COOKIES else "") + "nimstead_sso"
+
+
 log = logging.getLogger(__name__)
 INSTALL_SH = Path(__file__).parent / "static" / "install.sh"
 INSTALL_PS1 = Path(__file__).parent / "static" / "install.ps1"
@@ -418,7 +427,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
                 s.commit()
             request.state.api_token = t.token_hash[:12]  # truthy: which token, for per-caller limits
             return user
-        token = request.cookies.get(SESSION_COOKIE)
+        token = request.cookies.get(session_cookie())
         ws = s.get(WebSession, sha(token)) if token else None
         if not ws or ws.expires < now() or ws.last_used < now() - SESSION_IDLE:
             raise HTTPException(401, "Not signed in")
@@ -453,7 +462,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         token = secrets.token_urlsafe(32)
         s.add(WebSession(token_hash=sha(token), user_id=user.id, expires=now() + timedelta(days=SESSION_DAYS)))
         s.commit()
-        resp.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=SESSION_DAYS * 86400)
+        resp.set_cookie(session_cookie(), token, httponly=True, samesite="strict", secure=SECURE_COOKIES, max_age=SESSION_DAYS * 86400)
 
     # --- agent distribution -----------------------------------------------
 
@@ -807,10 +816,10 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         request supplies the cookie, s commits deletion and resp clears the cookie.
         No current-user dependency or global revocation is required. Storage errors
         can prevent cookie clearing. Other sessions and bearer tokens remain."""
-        if token := request.cookies.get(SESSION_COOKIE):
+        if token := request.cookies.get(session_cookie()):
             s.execute(delete(WebSession).where(WebSession.token_hash == sha(token)))
             s.commit()
-        resp.delete_cookie(SESSION_COOKIE)
+        resp.delete_cookie(session_cookie(), secure=SECURE_COOKIES)
 
     @app.get("/api/me")
     def me(user: CurrentUser, s: DB):
@@ -833,7 +842,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             s.execute(delete(model).where(model.user_id == user.id))
         evidence.append(s, user.org_id, "sessions_revoked", user.id, {"by": user.email})
         s.commit()
-        resp.delete_cookie(SESSION_COOKIE)
+        resp.delete_cookie(session_cookie(), secure=SECURE_COOKIES)
 
     class PasswordChange(BaseModel):
         current: str = Field(max_length=200)
@@ -860,7 +869,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if user.totp_secret and not capped_factor(s, user, body.code):
             raise HTTPException(403, "Enter a current authenticator code")
         user.password_hash = ph.hash(body.new)
-        keep = sha(request.cookies.get(SESSION_COOKIE, ""))
+        keep = sha(request.cookies.get(session_cookie(), ""))
         s.execute(delete(WebSession).where(WebSession.user_id == user.id, WebSession.token_hash != keep))  # other devices out
         s.execute(delete(ApiToken).where(ApiToken.user_id == user.id))  # a password change is also how people recover
         evidence.append(s, user.org_id, "password_changed", user.id, {"by": user.email})
@@ -2617,12 +2626,12 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         return server_origin(request) + "/api/auth/sso/callback"
 
     def sso_fail(reason: str) -> RedirectResponse:
-        """Return a 303 sign-in redirect with reason and delete the scoped SSO cookie.
+        """Return a 303 sign-in redirect with reason and delete the SSO cookie.
 
         reason is interpolated into the query. No pending database flow is removed
         here. Caller supplies a known error label."""
         resp = RedirectResponse(f"/signin?sso_error={reason}", status_code=303)
-        resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
+        resp.delete_cookie(sso_cookie(), secure=SECURE_COOKIES)
         return resp
 
     @app.post("/api/auth/sso/start")
@@ -2662,7 +2671,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         s.commit()
         resp = RedirectResponse(url, status_code=303)
         # Lax, not Strict: the IdP's redirect back is a cross-site navigation. The cookie binds the flow to this browser (login CSRF).
-        resp.set_cookie(SSO_COOKIE, flow["state"], max_age=sso.FLOW_SECONDS, httponly=True, samesite="lax", secure=SECURE_COOKIES, path="/api/auth/sso")
+        resp.set_cookie(sso_cookie(), flow["state"], max_age=sso.FLOW_SECONDS, httponly=True, samesite="lax", secure=SECURE_COOKIES)
         return resp
 
     @app.get("/api/auth/sso/callback")
@@ -2679,7 +2688,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
         if pending:  # single use, whatever happens next
             s.delete(pending)
             s.commit()
-        cookie = request.cookies.get(SSO_COOKIE)
+        cookie = request.cookies.get(sso_cookie())
         if not pending or pending.expires < now() or not cookie or not secrets.compare_digest(cookie, state):
             return sso_fail("state")
         flow = {**pending.data, "state": state}
@@ -2709,7 +2718,7 @@ def create_app(db_url: str | None = None, oidc_http: httpx.Client | None = None,
             evidence.append(s, o.id, "sso_user_created", user.id, {"email": email, "issuer": o.sso_issuer})
         evidence.append(s, o.id, "sso_login", user.id, {"email": email})
         resp = RedirectResponse("/", status_code=303)
-        resp.delete_cookie(SSO_COOKIE, path="/api/auth/sso")
+        resp.delete_cookie(sso_cookie(), secure=SECURE_COOKIES)
         start_session(s, user, resp)
         return resp
 
